@@ -144,7 +144,6 @@ class SQLMetadata(object):
         # returning the node and last inserted uid
         return res.lastrowid, node
 
-
     #
     # Nodes management
     #

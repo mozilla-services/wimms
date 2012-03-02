@@ -4,6 +4,8 @@
 """
     Sharded version : one DB per service, same DB
 """
+import traceback
+
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
@@ -11,6 +13,9 @@ from sqlalchemy.sql import text as sqltext
 from sqlalchemy.sql import select, update, and_
 from sqlalchemy.exc import OperationalError, TimeoutError
 
+from mozsvc.exceptions import BackendError
+
+from wimms import logger
 from wimms.sql import (SQLMetadata, _NodesBase, get_user_nodes_table,
                        WRITEABLE_FIELDS)
 
