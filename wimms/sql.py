@@ -24,12 +24,12 @@ _Base = declarative_base()
 tables = []
 
 
-def get_user_nodes_table(driver):
+def get_user_nodes_table(driver, base=_Base):
     if 'user_nodes' in _Base.metadata.tables:
         return _Base.metadata.tables['user_nodes']
 
     if driver != 'pysqlite':
-        class UserNodes(_Base):
+        class UserNodes(base):
             """This table lists all the users associated to a service.
 
             A user is represented by an email, a uid and its allocated node.
@@ -37,37 +37,38 @@ def get_user_nodes_table(driver):
             __tablename__ = 'user_nodes'
             email = Column(String(128), primary_key=True, index=True)
             node = Column(String(64), primary_key=True, nullable=False)
-            service = Column(String(30), primary_key=True, nullable=False)
+            service = Column(String(30))
             uid = Column(BigInteger(), index=True, autoincrement=True,
                          unique=True, nullable=False)
 
         return UserNodes.__table__
     else:
 
-        class UserNodes(_Base):
+        class UserNodes(base):
             """Sqlite version"""
             __tablename__ = 'user_nodes'
             email = Column(String(128))
             node = Column(String(64), nullable=False)
-            service = Column(String(30), nullable=False)
+            service = Column(String(30))
             uid = Column(Integer(11), primary_key=True, autoincrement=True)
 
         return UserNodes.__table__
 
 
-class Nodes(_Base):
+class _NodesBase(object):
     """A Table that keep tracks of all nodes per service
     """
-    __tablename__ = 'nodes'
-
     service = Column(String(30), primary_key=True, nullable=False)
     node = Column(String(64), primary_key=True, nullable=False)
-
     available = Column(Integer(11), default=0, nullable=False)
     current_load = Column(Integer(11), default=0, nullable=False)
     capacity = Column(Integer(11), default=0, nullable=False)
     downed = Column(Integer(6), default=0, nullable=False)
     backoff = Column(Integer(11), default=0, nullable=False)
+
+
+class Nodes(_NodesBase, _Base):
+    __tablename__ = 'nodes'
 
 
 nodes = Nodes.__table__
@@ -110,6 +111,15 @@ class SQLMetadata(object):
             if create_tables:
                 table.create(checkfirst=True)
 
+    def _safe_execute(self, *args, **kwds):
+        """Execute an sqlalchemy query, raise BackendError on failure."""
+        try:
+            return self._engine.execute(*args, **kwds)
+        except (OperationalError, TimeoutError), exc:
+            err = traceback.format_exc()
+            logger.error(err)
+            raise BackendError(str(exc))
+
     #
     # Node allocation
     #
@@ -134,14 +144,6 @@ class SQLMetadata(object):
         # returning the node and last inserted uid
         return res.lastrowid, node
 
-    def _safe_execute(self, *args, **kwds):
-        """Execute an sqlalchemy query, raise BackendError on failure."""
-        try:
-            return self._engine.execute(*args, **kwds)
-        except (OperationalError, TimeoutError), exc:
-            err = traceback.format_exc()
-            logger.error(err)
-            raise BackendError(str(exc))
 
     #
     # Nodes management
