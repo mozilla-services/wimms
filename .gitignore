@@ -1,0 +1,12 @@
+*.pyc
+*.egg-info
+*.swp
+.coverage
+*~
+build
+dist
+bin
+lib
+include
+.Python
+man
