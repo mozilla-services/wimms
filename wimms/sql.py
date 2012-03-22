@@ -57,13 +57,16 @@ def get_user_nodes_table(driver, base=_Base):
         return UserNodes.__table__
 
 
-class ServicePattern(_Base):
+class _ServicePatternBase(object):
     """ A table that keeps track of the url pattern.
     """
-    __tablename__ = 'service_pattern'
     service = Column(String(30), primary_key=True)
     version = Column(String(30), primary_key=True)
     pattern = Column(String(128), primary_key=True)
+
+
+class ServicePattern(_ServicePatternBase, _Base):
+    __tablename__ = 'service_pattern'
 
 
 service_pattern = ServicePattern.__table__
@@ -130,10 +133,25 @@ class SQLMetadata(object):
             if create_tables:
                 table.create(checkfirst=True)
 
+    def _get_engine(self, service=None):
+        return self._engine
+
     def _safe_execute(self, *args, **kwds):
         """Execute an sqlalchemy query, raise BackendError on failure."""
+        if hasattr(args[0], 'bind'):
+            engine = args[0].bind
+        else:
+            engine = None
+
+        if engine is None:
+            engine = kwds.get('engine')
+            if engine is None:
+                engine = self._get_engine(kwds.get('service'))
+            else:
+                del kwds['engine']
+
         try:
-            return self._engine.execute(*args, **kwds)
+            return engine.execute(*args, **kwds)
         except (OperationalError, TimeoutError), exc:
             err = traceback.format_exc()
             logger.error(err)
@@ -169,13 +187,21 @@ class SQLMetadata(object):
     #
     def get_patterns(self):
         """Returns all the service URL patterns."""
-        query = select([service_pattern])
+        query = select([self._get_pattern_table()])
         return self._safe_execute(query)
+
+    def _get_nodes_table(self, service):
+        return nodes
+
+    def _get_pattern_table(self, service):
+        return pattern_table
 
     def get_best_node(self, service, version):
         """Returns the 'least loaded' node currently available, increments the
         active count on that node, and decrements the slots currently available
         """
+        nodes = self._get_nodes_table(service)
+
         where = [nodes.c.service == service,
                  nodes.c.version == version,
                  nodes.c.available > 0,
@@ -200,6 +226,8 @@ class SQLMetadata(object):
         return res.node
 
     def update_node(self, node, service, version, **fields):
+        nodes = self._get_nodes_table(service)
+
         for field in fields:
             if field not in WRITEABLE_FIELDS:
                 raise NotImplementedError()
@@ -208,5 +236,5 @@ class SQLMetadata(object):
                  nodes.c.version == version]
         where = and_(*where)
         query = update(nodes, where, fields)
-        self._engine.execute(query)
+        self._safe_execute(query)
         return True

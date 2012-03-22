@@ -20,16 +20,17 @@ class TestSQLShardedDB(TestSQLDB):
         self.backend = ShardedSQLMetadata(_SQLURI, create_tables=True)
 
         # adding a node with 100 slots for sync 1.0
-        self.backend._safe_execute('sync',
+        self.backend._safe_execute(
               """insert into nodes (`node`, `service`, `version`, `available`,
                     `capacity`, `current_load`, `downed`, `backoff`)
-                values ("https://phx12", "sync", "1.0", 100, 100, 0, 0, 0)""")
+                values ("https://phx12", "sync", "1.0", 100, 100, 0, 0, 0)""",
+               service='sync' )
 
         self._sqlite = self.backend._dbs['sync'][0].driver == 'pysqlite'
 
     def tearDown(self):
-        for service, (engine, __, __) in self.backend._dbs.items():
-
+        for service, value in self.backend._dbs.items():
+            engine = value[0]
             sqlite = engine.driver == 'pysqlite'
             if sqlite:
                 filename = str(engine.url).split('sqlite://')[-1]

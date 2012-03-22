@@ -17,25 +17,7 @@ from mozsvc.exceptions import BackendError
 
 from wimms import logger
 from wimms.sql import (SQLMetadata, _NodesBase, get_user_nodes_table,
-                       WRITEABLE_FIELDS, service_pattern)
-
-
-_GET = sqltext("""\
-select
-    uid, node
-from
-    user_nodes
-where
-    email = :email
-""")
-
-
-_INSERT = sqltext("""\
-insert into user_nodes
-    (email, node)
-values
-    (:email, :node)
-""")
+                       WRITEABLE_FIELDS, _ServicePatternBase)
 
 
 class ShardedSQLMetadata(SQLMetadata):
@@ -58,94 +40,25 @@ class ShardedSQLMetadata(SQLMetadata):
             args = {'__tablename__': 'nodes'}
             nodes = type('Nodes', (_NodesBase, Base), args).__table__
 
-            for table in (nodes, user_nodes):
+            args = {'__tablename__': 'service_pattern'}
+            service_pattern = type('ServicePattern',
+                    (_ServicePatternBase, Base), args).__table__
+
+            for table in (nodes, user_nodes, service_pattern):
                 table.metadata.bind = engine
                 if create_tables:
                     table.create(checkfirst=True)
 
-            self._dbs[service] = engine, nodes, user_nodes
+            self._dbs[service] = engine, nodes, user_nodes, service_pattern
 
-    def _safe_execute(self, service, *args, **kwds):
-        """Execute an sqlalchemy query, raise BackendError on failure."""
-        engine, __, __ = self._dbs[service]
-        try:
-            return engine.execute(*args, **kwds)
-        except (OperationalError, TimeoutError), exc:
-            err = traceback.format_exc()
-            logger.error(err)
-            raise BackendError(str(exc))
+    def _get_engine(self, service=None):
+        if service is None:
+            raise NotImplementedError()
+            return self._dbs.values()[0][0]
+        return self._dbs[service][0]
 
-    #
-    # Node allocation
-    #
-    def get_node(self, email, service, version):
-        res = self._safe_execute(service, _GET, email=email,
-                                 version=version)
-        res = res.fetchone()
-        if res is None:
-            return None, None
-        return res.uid, res.node
+    def _get_nodes_table(self, service):
+        return self._dbs[service][1]
 
-    def allocate_node(self, email, service, version):
-        if self.get_node(email, service, version) != (None, None):
-            raise BackendError("Node already assigned")
-
-        # getting a node
-        node = self.get_best_node(service, version)
-
-        # saving the node
-        res = self._safe_execute(service, _INSERT, email=email, node=node,
-                                 version=version)
-
-        # returning the node and last inserted uid
-        return res.lastrowid, node
-
-    #
-    # Nodes management
-    #
-    def get_patterns(self):
-        """Returns all the service URL patterns."""
-        query = select([service_pattern])
-        return self._safe_execute(query)
-
-    def get_best_node(self, service, version):
-        """Returns the 'least loaded' node currently available, increments the
-        active count on that node, and decrements the slots currently available
-        """
-        __, nodes, __ = self._dbs[service]
-
-        where = [nodes.c.service == service,
-                 nodes.c.version == version,
-                 nodes.c.available > 0,
-                 nodes.c.capacity > nodes.c.current_load,
-                 nodes.c.downed == 0]
-
-        query = select([nodes]).where(and_(*where))
-        query = query.order_by(nodes.c.current_load /
-                               nodes.c.capacity).limit(1)
-        res = self._safe_execute(service, query)
-        res = res.fetchone()
-        if res is None:
-            # unable to get a node
-            raise BackendError('unable to get a node')
-
-        node = str(res.node)
-        current_load = int(res.current_load)
-        available = int(res.available)
-        self.update_node(node, service, version,
-                         available=available - 1,
-                         current_load=current_load + 1)
-        return res.node
-
-    def update_node(self, node, service, version, **fields):
-        for field in fields:
-            if field not in WRITEABLE_FIELDS:
-                raise NotImplementedError()
-
-        __, nodes, __ = self._dbs[service]
-        where = [nodes.c.service == service, nodes.c.node == node,
-                 nodes.c.version == version]
-        where = and_(*where)
-        query = update(nodes, where, fields)
-        self._safe_execute(service, query)
-        return True
+    def _get_pattern_table(self, service):
+        return self._dbs[service][3]
