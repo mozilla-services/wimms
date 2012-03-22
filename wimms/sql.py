@@ -38,6 +38,7 @@ def get_user_nodes_table(driver, base=_Base):
             email = Column(String(128), primary_key=True, index=True)
             node = Column(String(64), primary_key=True, nullable=False)
             service = Column(String(30))
+            version = Column(String(30), primary_key=True)
             uid = Column(BigInteger(), index=True, autoincrement=True,
                          unique=True, nullable=False)
 
@@ -50,9 +51,23 @@ def get_user_nodes_table(driver, base=_Base):
             email = Column(String(128))
             node = Column(String(64), nullable=False)
             service = Column(String(30))
+            version = Column(String(30))
             uid = Column(Integer(11), primary_key=True, autoincrement=True)
 
         return UserNodes.__table__
+
+
+class ServicePattern(_Base):
+    """ A table that keeps track of the url pattern.
+    """
+    __tablename__ = 'service_pattern'
+    service = Column(String(30), primary_key=True)
+    version = Column(String(30), primary_key=True)
+    pattern = Column(String(128), primary_key=True)
+
+
+service_pattern = ServicePattern.__table__
+tables.append(service_pattern)
 
 
 class _NodesBase(object):
@@ -60,6 +75,7 @@ class _NodesBase(object):
     """
     service = Column(String(30), primary_key=True, nullable=False)
     node = Column(String(64), primary_key=True, nullable=False)
+    version = Column(String(30), primary_key=True, nullable=False)
     available = Column(Integer(11), default=0, nullable=False)
     current_load = Column(Integer(11), default=0, nullable=False)
     capacity = Column(Integer(11), default=0, nullable=False)
@@ -84,14 +100,16 @@ where
     email = :email
 and
     service = :service
+and
+    version = :version
 """)
 
 
 _INSERT = sqltext("""\
 insert into user_nodes
-    (service, email, node)
+    (service, email, node, version)
 values
-    (:service, :email, :node)
+    (:service, :email, :node, :version)
 """)
 
 
@@ -104,6 +122,7 @@ class SQLMetadata(object):
     def __init__(self, sqluri, create_tables=False, **kw):
         self.sqluri = sqluri
         self._engine = create_engine(sqluri, poolclass=NullPool)
+        self._engine.echo = kw.get('echo', False)
         self.user_nodes = get_user_nodes_table(self._engine.driver)
 
         for table in tables + [self.user_nodes]:
@@ -123,23 +142,24 @@ class SQLMetadata(object):
     #
     # Node allocation
     #
-    def get_node(self, email, service):
-        res = self._safe_execute(_GET, email=email, service=service)
+    def get_node(self, email, service, version):
+        res = self._safe_execute(_GET, email=email, service=service,
+                                 version=version)
         res = res.fetchone()
         if res is None:
             return None, None
         return res.uid, res.node
 
-    def allocate_node(self, email, service):
-        if self.get_node(email, service) != (None, None):
+    def allocate_node(self, email, service, version):
+        if self.get_node(email, service, version) != (None, None):
             raise BackendError("Node already assigned")
 
         # getting a node
-        node = self.get_best_node(service)
+        node = self.get_best_node(service, version)
 
         # saving the node
         res = self._safe_execute(_INSERT, email=email, service=service,
-                                 node=node)
+                                 node=node, version=version)
 
         # returning the node and last inserted uid
         return res.lastrowid, node
@@ -147,11 +167,17 @@ class SQLMetadata(object):
     #
     # Nodes management
     #
-    def get_best_node(self, service):
+    def get_patterns(self):
+        """Returns all the service URL patterns."""
+        query = select([service_pattern])
+        return self._safe_execute(query)
+
+    def get_best_node(self, service, version):
         """Returns the 'least loaded' node currently available, increments the
         active count on that node, and decrements the slots currently available
         """
         where = [nodes.c.service == service,
+                 nodes.c.version == version,
                  nodes.c.available > 0,
                  nodes.c.capacity > nodes.c.current_load,
                  nodes.c.downed == 0]
@@ -168,16 +194,18 @@ class SQLMetadata(object):
         node = str(res.node)
         current_load = int(res.current_load)
         available = int(res.available)
-        self.update_node(node, service, available=available - 1,
+        self.update_node(node, service, version,
+                         available=available - 1,
                          current_load=current_load + 1)
         return res.node
 
-    def update_node(self, node, service, **fields):
+    def update_node(self, node, service, version, **fields):
         for field in fields:
             if field not in WRITEABLE_FIELDS:
                 raise NotImplementedError()
 
-        where = [nodes.c.service == service, nodes.c.node == node]
+        where = [nodes.c.service == service, nodes.c.node == node,
+                 nodes.c.version == version]
         where = and_(*where)
         query = update(nodes, where, fields)
         self._engine.execute(query)

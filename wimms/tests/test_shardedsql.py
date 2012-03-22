@@ -7,7 +7,9 @@ from wimms.shardedsql import ShardedSQLMetadata
 from wimms.tests.test_sql import TestSQLDB
 
 
-_DBS = 'sync;sqlite:////tmp/wimms,queuey;sqlite:////tmp/wimms2'
+_DEFAULT_DBS = ('sync;sqlite:////tmp/wimms,queuey;'
+                'sqlite:////tmp/wimms2')
+_SQLURI = os.environ.get('WIMMS_SQLURI', _DEFAULT_DBS)
 
 
 class TestSQLShardedDB(TestSQLDB):
@@ -15,13 +17,13 @@ class TestSQLShardedDB(TestSQLDB):
     def setUp(self):
         super(TestSQLDB, self).setUp()
 
-        self.backend = ShardedSQLMetadata(_DBS, create_tables=True)
+        self.backend = ShardedSQLMetadata(_SQLURI, create_tables=True)
 
-        # adding a node with 100 slots for sync
+        # adding a node with 100 slots for sync 1.0
         self.backend._safe_execute('sync',
-              """insert into nodes (`node`, `service`, `available`,
+              """insert into nodes (`node`, `service`, `version`, `available`,
                     `capacity`, `current_load`, `downed`, `backoff`)
-                  values ("phx12", "sync", 100, 100, 0, 0, 0)""")
+                values ("https://phx12", "sync", "1.0", 100, 100, 0, 0, 0)""")
 
         self._sqlite = self.backend._dbs['sync'][0].driver == 'pysqlite'
 

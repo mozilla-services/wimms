@@ -17,7 +17,7 @@ from mozsvc.exceptions import BackendError
 
 from wimms import logger
 from wimms.sql import (SQLMetadata, _NodesBase, get_user_nodes_table,
-                       WRITEABLE_FIELDS)
+                       WRITEABLE_FIELDS, service_pattern)
 
 
 _GET = sqltext("""\
@@ -52,6 +52,7 @@ class ShardedSQLMetadata(SQLMetadata):
 
             # XXX will use a shared pool next
             engine = create_engine(sqluri, poolclass=NullPool)
+            engine.echo = kw.get('echo', False)
             user_nodes = get_user_nodes_table(engine.driver, Base)
 
             args = {'__tablename__': 'nodes'}
@@ -77,22 +78,24 @@ class ShardedSQLMetadata(SQLMetadata):
     #
     # Node allocation
     #
-    def get_node(self, email, service):
-        res = self._safe_execute(service, _GET, email=email)
+    def get_node(self, email, service, version):
+        res = self._safe_execute(service, _GET, email=email,
+                                 version=version)
         res = res.fetchone()
         if res is None:
             return None, None
         return res.uid, res.node
 
-    def allocate_node(self, email, service):
-        if self.get_node(email, service) != (None, None):
+    def allocate_node(self, email, service, version):
+        if self.get_node(email, service, version) != (None, None):
             raise BackendError("Node already assigned")
 
         # getting a node
-        node = self.get_best_node(service)
+        node = self.get_best_node(service, version)
 
         # saving the node
-        res = self._safe_execute(service, _INSERT, email=email, node=node)
+        res = self._safe_execute(service, _INSERT, email=email, node=node,
+                                 version=version)
 
         # returning the node and last inserted uid
         return res.lastrowid, node
@@ -100,13 +103,19 @@ class ShardedSQLMetadata(SQLMetadata):
     #
     # Nodes management
     #
-    def get_best_node(self, service):
+    def get_patterns(self):
+        """Returns all the service URL patterns."""
+        query = select([service_pattern])
+        return self._safe_execute(query)
+
+    def get_best_node(self, service, version):
         """Returns the 'least loaded' node currently available, increments the
         active count on that node, and decrements the slots currently available
         """
         __, nodes, __ = self._dbs[service]
 
         where = [nodes.c.service == service,
+                 nodes.c.version == version,
                  nodes.c.available > 0,
                  nodes.c.capacity > nodes.c.current_load,
                  nodes.c.downed == 0]
@@ -123,17 +132,19 @@ class ShardedSQLMetadata(SQLMetadata):
         node = str(res.node)
         current_load = int(res.current_load)
         available = int(res.available)
-        self.update_node(node, service, available=available - 1,
+        self.update_node(node, service, version,
+                         available=available - 1,
                          current_load=current_load + 1)
         return res.node
 
-    def update_node(self, node, service, **fields):
+    def update_node(self, node, service, version, **fields):
         for field in fields:
             if field not in WRITEABLE_FIELDS:
                 raise NotImplementedError()
 
         __, nodes, __ = self._dbs[service]
-        where = [nodes.c.service == service, nodes.c.node == node]
+        where = [nodes.c.service == service, nodes.c.node == node,
+                 nodes.c.version == version]
         where = and_(*where)
         query = update(nodes, where, fields)
         self._safe_execute(service, query)
