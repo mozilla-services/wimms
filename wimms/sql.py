@@ -35,7 +35,7 @@ def get_user_nodes_table(driver, base=_Base):
             A user is represented by an email, a uid and its allocated node.
             """
             __tablename__ = 'user_nodes'
-            email = Column(String(128), primary_key=True, index=True)
+            email = Column(String(255), primary_key=True, index=True)
             node = Column(String(64), primary_key=True, nullable=False)
             service = Column(String(30))
             version = Column(String(30), primary_key=True)
@@ -48,7 +48,7 @@ def get_user_nodes_table(driver, base=_Base):
         class UserNodes(base):
             """Sqlite version"""
             __tablename__ = 'user_nodes'
-            email = Column(String(128))
+            email = Column(String(255))
             node = Column(String(64), nullable=False)
             service = Column(String(30))
             version = Column(String(30))
