@@ -37,7 +37,7 @@ class ShardedSQLMetadata(SQLMetadata):
             engine = create_engine(sqluri, poolclass=NullPool)
             engine.echo = kw.get('echo', False)
 
-            if engine.driver == 'sqlite':
+            if engine.driver == 'pysqlite':
                 from wimms.sqliteschemas import get_cls
             else:
                 from wimms.schemas import get_cls

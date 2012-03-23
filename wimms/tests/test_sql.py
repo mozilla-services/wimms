@@ -18,9 +18,9 @@ class TestSQLDB(TestCase):
 
         # adding a node with 100 slots
         self.backend._safe_execute(
-              """insert into nodes (`node`, `service`, `available`,
+              """insert into nodes (`id`, `node`, `service`, `available`,
                     `capacity`, `current_load`, `downed`, `backoff`)
-                values ("https://phx12", "sync-1.0", 100, 100, 0, 0, 0)""")
+                values (1, "https://phx12", "sync-1.0", 100, 100, 0, 0, 0)""")
 
         self._sqlite = self.backend._engine.driver == 'pysqlite'
 

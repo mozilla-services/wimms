@@ -54,7 +54,7 @@ class SQLMetadata(object):
         self._engine = create_engine(sqluri, poolclass=NullPool)
         self._engine.echo = kw.get('echo', False)
 
-        if self._engine.driver == 'sqlite':
+        if self._engine.driver == 'pysqlite':
             from wimms.sqliteschemas import get_cls
         else:
             from wimms.schemas import get_cls
