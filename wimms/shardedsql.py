@@ -16,8 +16,7 @@ from sqlalchemy.exc import OperationalError, TimeoutError
 from mozsvc.exceptions import BackendError
 
 from wimms import logger
-from wimms.sql import (SQLMetadata, _NodesBase, get_user_nodes_table,
-                       WRITEABLE_FIELDS, _ServicePatternBase)
+from wimms.sql import SQLMetadata, WRITEABLE_FIELDS
 
 
 class ShardedSQLMetadata(SQLMetadata):
@@ -26,6 +25,8 @@ class ShardedSQLMetadata(SQLMetadata):
         # databases is a string containing one sqluri per service:
         #   service1;sqluri1,service2;sqluri2
         self._dbs = {}
+
+
         for database in databases.split(','):
             database = database.split(';')
 
@@ -35,21 +36,22 @@ class ShardedSQLMetadata(SQLMetadata):
             # XXX will use a shared pool next
             engine = create_engine(sqluri, poolclass=NullPool)
             engine.echo = kw.get('echo', False)
-            user_nodes = get_user_nodes_table(engine.driver, Base)
 
-            args = {'__tablename__': 'nodes'}
-            nodes = type('Nodes', (_NodesBase, Base), args).__table__
+            if engine.driver == 'sqlite':
+                from wimms.sqliteschemas import get_cls
+            else:
+                from wimms.schemas import get_cls
 
-            args = {'__tablename__': 'service_pattern'}
-            service_pattern = type('ServicePattern',
-                    (_ServicePatternBase, Base), args).__table__
+            user_nodes = get_cls('user_nodes', Base)
+            nodes = get_cls('nodes', Base)
+            patterns = get_cls('service_pattern', Base)
 
-            for table in (nodes, user_nodes, service_pattern):
+            for table in (nodes, user_nodes, patterns):
                 table.metadata.bind = engine
                 if create_tables:
                     table.create(checkfirst=True)
 
-            self._dbs[service] = engine, nodes, user_nodes, service_pattern
+            self._dbs[service] = engine, nodes, user_nodes, patterns
 
     def _get_engine(self, service=None):
         if service is None:
