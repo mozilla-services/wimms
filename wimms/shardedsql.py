@@ -53,5 +53,18 @@ class ShardedSQLMetadata(SQLMetadata):
     def _get_nodes_table(self, service):
         return self._dbs[service][1]
 
-    def _get_pattern_table(self, service):
-        return self._dbs[service][3]
+    def get_patterns(self):
+        """Returns all the service URL patterns."""
+        # loop on all the tables to combine the pattern information.
+        patterns = []
+        for service, table in self._service_patterns.items():
+            try:
+                results = self._safe_execute(select([table]), service=service)
+            except BackendError:
+                continue
+
+            for result in results:
+                if result not in patterns:
+                    patterns.append(result)
+
+        return patterns

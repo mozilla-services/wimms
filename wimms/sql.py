@@ -121,14 +121,11 @@ class SQLMetadata(object):
     #
     def get_patterns(self):
         """Returns all the service URL patterns."""
-        query = select([self._get_pattern_table()])
+        query = select([self.patterns])
         return self._safe_execute(query)
 
     def _get_nodes_table(self, service):
         return self.nodes
-
-    def _get_pattern_table(self, service):
-        return self.patterns
 
     def get_best_node(self, service):
         """Returns the 'least loaded' node currently available, increments the
