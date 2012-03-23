@@ -11,8 +11,8 @@ import traceback
 from mozsvc.exceptions import BackendError
 
 from sqlalchemy.sql import select, update, and_
-from sqlalchemy.ext.declarative import declarative_base, Column
-from sqlalchemy import Integer, String, create_engine, BigInteger, Index, UniqueConstraint
+from sqlalchemy.ext.declarative import declarative_base, declared_attr, Column
+from sqlalchemy import Integer, String, create_engine, BigInteger, Index
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import text as sqltext
 from sqlalchemy.exc import OperationalError, TimeoutError
@@ -92,9 +92,12 @@ class _NodesBase(object):
     capacity = Column(Integer(11), default=0, nullable=False)
     downed = Column(Integer(6), default=0, nullable=False)
     backoff = Column(Integer(11), default=0, nullable=False)
-    __table_args__ = (UniqueConstraint('service', 'node', 'version'),
-                      {'mysql_engine': 'InnoDB'},
-                     )
+
+    @declared_attr
+    def __table_args__(cls):
+        return (Index('unique_idx', 'service', 'node', 'version', unique=True),
+                {'mysql_engine': 'InnoDB'},
+               )
 
 class Nodes(_NodesBase, _Base):
     __tablename__ = 'nodes'
