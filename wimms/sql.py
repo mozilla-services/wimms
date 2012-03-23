@@ -153,20 +153,12 @@ class SQLMetadata(object):
         node = str(res.node)
         current_load = int(res.current_load)
         available = int(res.available)
-        self.update_node(node, service,
-                         available=available - 1,
-                         current_load=current_load + 1)
-        return res.node
 
-    def update_node(self, node, service, **fields):
-        nodes = self._get_nodes_table(service)
-
-        for field in fields:
-            if field not in WRITEABLE_FIELDS:
-                raise NotImplementedError()
-
+        # updating the table
         where = [nodes.c.service == service, nodes.c.node == node]
         where = and_(*where)
+        fields = {'available': nodes.c.available - 1,
+                  'current_load': nodes.c.current_load +1}
         query = update(nodes, where, fields)
         self._safe_execute(query)
-        return True
+        return res.node
