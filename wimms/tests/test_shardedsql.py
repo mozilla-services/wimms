@@ -7,9 +7,8 @@ from wimms.shardedsql import ShardedSQLMetadata
 from wimms.tests.test_sql import TestSQLDB
 
 
-_DEFAULT_DBS = ('sync;sqlite:////tmp/wimms,queuey;'
-                'sqlite:////tmp/wimms2')
-_SQLURI = os.environ.get('WIMMS_SQLURI', _DEFAULT_DBS)
+_SQLURI = os.environ.get('WIMMS_SQLURI', 'sqlite:////tmp/wimms')
+_SQLURI = 'sync-1.0;%s,queuey;%s' % (_SQLURI, _SQLURI)
 
 
 class TestSQLShardedDB(TestSQLDB):
@@ -21,12 +20,12 @@ class TestSQLShardedDB(TestSQLDB):
 
         # adding a node with 100 slots for sync 1.0
         self.backend._safe_execute(
-              """insert into nodes (`node`, `service`, `version`, `available`,
+              """insert into nodes (`node`, `service`, `available`,
                     `capacity`, `current_load`, `downed`, `backoff`)
-                values ("https://phx12", "sync", "1.0", 100, 100, 0, 0, 0)""",
-               service='sync' )
+                values ("https://phx12", "sync-1.0", 100, 100, 0, 0, 0)""",
+               service='sync-1.0' )
 
-        self._sqlite = self.backend._dbs['sync'][0].driver == 'pysqlite'
+        self._sqlite = self.backend._dbs['sync-1.0'][0].driver == 'pysqlite'
 
     def tearDown(self):
         for service, value in self.backend._dbs.items():

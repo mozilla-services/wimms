@@ -38,13 +38,12 @@ def get_user_nodes_table(driver, base=_Base):
             email = Column(String(255), nullable=False)
             node = Column(String(64), nullable=False)
             service = Column(String(30), nullable=False)
-            version = Column(String(30), nullable=False)
             uid = Column(BigInteger(), primary_key=True, autoincrement=True,
                          nullable=False)
             __table_args__ = (Index('userlookup_idx',
-                                    'email', 'service', 'version', unique=True),
+                                    'email', 'service', unique=True),
                               Index('nodelookup_idx',
-                                    'node', 'service', 'version'),
+                                    'node', 'service'),
                               {'mysql_engine': 'InnoDB'},
                              )
 
@@ -57,7 +56,6 @@ def get_user_nodes_table(driver, base=_Base):
             email = Column(String(255))
             node = Column(String(64), nullable=False)
             service = Column(String(30))
-            version = Column(String(30))
             uid = Column(Integer(11), primary_key=True, autoincrement=True)
 
         return UserNodes.__table__
@@ -67,7 +65,6 @@ class _ServicePatternBase(object):
     """ A table that keeps track of the url pattern.
     """
     service = Column(String(30), primary_key=True)
-    version = Column(String(30), primary_key=True)
     pattern = Column(String(128), primary_key=True)
 
 
@@ -86,7 +83,6 @@ class _NodesBase(object):
                 nullable=False)
     service = Column(String(30), nullable=False)
     node = Column(String(64), nullable=False)
-    version = Column(String(30), nullable=False)
     available = Column(Integer, default=0, nullable=False)
     current_load = Column(Integer, default=0, nullable=False)
     capacity = Column(Integer, default=0, nullable=False)
@@ -95,7 +91,7 @@ class _NodesBase(object):
 
     @declared_attr
     def __table_args__(cls):
-        return (Index('unique_idx', 'service', 'node', 'version', unique=True),
+        return (Index('unique_idx', 'service', 'node', unique=True),
                 {'mysql_engine': 'InnoDB'},
                )
 
@@ -116,16 +112,14 @@ where
     email = :email
 and
     service = :service
-and
-    version = :version
 """)
 
 
 _INSERT = sqltext("""\
 insert into user_nodes
-    (service, email, node, version)
+    (service, email, node)
 values
-    (:service, :email, :node, :version)
+    (:service, :email, :node)
 """)
 
 
@@ -173,24 +167,23 @@ class SQLMetadata(object):
     #
     # Node allocation
     #
-    def get_node(self, email, service, version):
-        res = self._safe_execute(_GET, email=email, service=service,
-                                 version=version)
+    def get_node(self, email, service):
+        res = self._safe_execute(_GET, email=email, service=service)
         res = res.fetchone()
         if res is None:
             return None, None
         return res.uid, res.node
 
-    def allocate_node(self, email, service, version):
-        if self.get_node(email, service, version) != (None, None):
+    def allocate_node(self, email, service):
+        if self.get_node(email, service) != (None, None):
             raise BackendError("Node already assigned")
 
         # getting a node
-        node = self.get_best_node(service, version)
+        node = self.get_best_node(service)
 
         # saving the node
         res = self._safe_execute(_INSERT, email=email, service=service,
-                                 node=node, version=version)
+                                 node=node)
 
         # returning the node and last inserted uid
         return res.lastrowid, node
@@ -209,14 +202,13 @@ class SQLMetadata(object):
     def _get_pattern_table(self, service):
         return pattern_table
 
-    def get_best_node(self, service, version):
+    def get_best_node(self, service):
         """Returns the 'least loaded' node currently available, increments the
         active count on that node, and decrements the slots currently available
         """
         nodes = self._get_nodes_table(service)
 
         where = [nodes.c.service == service,
-                 nodes.c.version == version,
                  nodes.c.available > 0,
                  nodes.c.capacity > nodes.c.current_load,
                  nodes.c.downed == 0]
@@ -233,20 +225,19 @@ class SQLMetadata(object):
         node = str(res.node)
         current_load = int(res.current_load)
         available = int(res.available)
-        self.update_node(node, service, version,
+        self.update_node(node, service,
                          available=available - 1,
                          current_load=current_load + 1)
         return res.node
 
-    def update_node(self, node, service, version, **fields):
+    def update_node(self, node, service, **fields):
         nodes = self._get_nodes_table(service)
 
         for field in fields:
             if field not in WRITEABLE_FIELDS:
                 raise NotImplementedError()
 
-        where = [nodes.c.service == service, nodes.c.node == node,
-                 nodes.c.version == version]
+        where = [nodes.c.service == service, nodes.c.node == node]
         where = and_(*where)
         query = update(nodes, where, fields)
         self._safe_execute(query)
