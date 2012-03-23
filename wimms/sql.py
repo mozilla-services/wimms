@@ -87,11 +87,11 @@ class _NodesBase(object):
     service = Column(String(30), nullable=False)
     node = Column(String(64), nullable=False)
     version = Column(String(30), nullable=False)
-    available = Column(Integer(11), default=0, nullable=False)
-    current_load = Column(Integer(11), default=0, nullable=False)
-    capacity = Column(Integer(11), default=0, nullable=False)
-    downed = Column(Integer(6), default=0, nullable=False)
-    backoff = Column(Integer(11), default=0, nullable=False)
+    available = Column(Integer, default=0, nullable=False)
+    current_load = Column(Integer, default=0, nullable=False)
+    capacity = Column(Integer, default=0, nullable=False)
+    downed = Column(Integer, default=0, nullable=False)
+    backoff = Column(Integer, default=0, nullable=False)
 
     @declared_attr
     def __table_args__(cls):
