@@ -148,14 +148,11 @@ class SQLMetadata(object):
             raise BackendError('unable to get a node')
 
         node = str(res.node)
-        current_load = int(res.current_load)
-        available = int(res.available)
-
         # updating the table
         where = [nodes.c.service == service, nodes.c.node == node]
         where = and_(*where)
         fields = {'available': nodes.c.available - 1,
-                  'current_load': nodes.c.current_load +1}
+                  'current_load': nodes.c.current_load + 1}
         query = update(nodes, where, fields)
         self._safe_execute(query)
         return res.node

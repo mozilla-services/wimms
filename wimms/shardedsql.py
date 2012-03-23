@@ -4,9 +4,12 @@
 """
     Sharded version : one DB per service, same DB
 """
+from mozsvc.exceptions import BackendError
+
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
+from sqlalchemy.sql import select
 
 from wimms.sql import SQLMetadata
 
