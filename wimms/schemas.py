@@ -4,17 +4,8 @@
 """
     Table schema for MySQL and sqlite
 """
-import traceback
-from mozsvc.exceptions import BackendError
-
-from sqlalchemy.sql import select, update, and_
-from sqlalchemy.ext.declarative import declarative_base, declared_attr, Column
-from sqlalchemy import Integer, String, create_engine, BigInteger, Index
-from sqlalchemy.pool import NullPool
-from sqlalchemy.sql import text as sqltext
-from sqlalchemy.exc import OperationalError, TimeoutError
-
-from wimms import logger
+from sqlalchemy.ext.declarative import declared_attr, Column
+from sqlalchemy import Integer, String, BigInteger, Index
 
 
 bases = {}

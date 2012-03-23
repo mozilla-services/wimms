@@ -11,8 +11,8 @@ import traceback
 from mozsvc.exceptions import BackendError
 
 from sqlalchemy.sql import select, update, and_
-from sqlalchemy.ext.declarative import declarative_base, declared_attr, Column
-from sqlalchemy import Integer, String, create_engine, BigInteger, Index
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import text as sqltext
 from sqlalchemy.exc import OperationalError, TimeoutError
@@ -55,9 +55,9 @@ class SQLMetadata(object):
         self._engine.echo = kw.get('echo', False)
 
         if self._engine.driver == 'pysqlite':
-            from wimms.sqliteschemas import get_cls
+            from wimms.sqliteschemas import get_cls  # NOQA
         else:
-            from wimms.schemas import get_cls
+            from wimms.schemas import get_cls  # NOQA
 
         self.user_nodes = get_cls('user_nodes', _Base)
         self.nodes = get_cls('nodes', _Base)

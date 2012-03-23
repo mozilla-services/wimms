@@ -23,7 +23,7 @@ class TestSQLShardedDB(TestSQLDB):
               """insert into nodes (`node`, `service`, `available`,
                     `capacity`, `current_load`, `downed`, `backoff`)
                 values ("https://phx12", "sync-1.0", 100, 100, 0, 0, 0)""",
-               service='sync-1.0' )
+               service='sync-1.0')
 
         self._sqlite = self.backend._dbs['sync-1.0'][0].driver == 'pysqlite'
 

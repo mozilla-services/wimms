@@ -2,11 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-    Table schema for MySQL and sqlite
+    Table schema for Sqlite
 """
-from wimms.schemas import (_UserNodesBase, _ServicePatternBase,
-                          _NodesBase, get_cls, _add, Column, Integer,
-                          declared_attr)
+from wimms.schemas import (_UserNodesBase, _NodesBase, _add, Column,
+                           Integer, declared_attr)
+
+from wimms.schemas import get_cls   # NOQA
 
 
 class _SQLITENodesBase(_NodesBase):
@@ -15,8 +16,6 @@ class _SQLITENodesBase(_NodesBase):
     @declared_attr
     def __table_args__(cls):
         return ()
-
-
 
 _add('nodes', _SQLITENodesBase)
 
@@ -29,4 +28,3 @@ class _SQLITEUserNodesBase(_UserNodesBase):
         return ()
 
 _add('user_nodes', _SQLITEUserNodesBase)
-

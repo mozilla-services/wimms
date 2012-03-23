@@ -4,19 +4,11 @@
 """
     Sharded version : one DB per service, same DB
 """
-import traceback
-
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
-from sqlalchemy.sql import text as sqltext
-from sqlalchemy.sql import select, update, and_
-from sqlalchemy.exc import OperationalError, TimeoutError
 
-from mozsvc.exceptions import BackendError
-
-from wimms import logger
-from wimms.sql import SQLMetadata, WRITEABLE_FIELDS
+from wimms.sql import SQLMetadata
 
 
 class ShardedSQLMetadata(SQLMetadata):
@@ -25,7 +17,6 @@ class ShardedSQLMetadata(SQLMetadata):
         # databases is a string containing one sqluri per service:
         #   service1;sqluri1,service2;sqluri2
         self._dbs = {}
-
 
         for database in databases.split(','):
             database = database.split(';')
@@ -38,9 +29,9 @@ class ShardedSQLMetadata(SQLMetadata):
             engine.echo = kw.get('echo', False)
 
             if engine.driver == 'pysqlite':
-                from wimms.sqliteschemas import get_cls
+                from wimms.sqliteschemas import get_cls  # NOQA
             else:
-                from wimms.schemas import get_cls
+                from wimms.schemas import get_cls   # NOQA
 
             user_nodes = get_cls('user_nodes', Base)
             nodes = get_cls('nodes', Base)
