@@ -44,7 +44,7 @@ def get_user_nodes_table(driver, base=_Base):
             __table_args__ = (Index('userlookup_idx',
                                     'email', 'service', 'version', unique=True),
                               Index('nodelookup_idx',
-                                    'node', 'service'),
+                                    'node', 'service', 'version'),
                               {'mysql_engine': 'InnoDB'},
                              )
 
