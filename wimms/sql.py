@@ -12,7 +12,7 @@ from mozsvc.exceptions import BackendError
 
 from sqlalchemy.sql import select, update, and_
 from sqlalchemy.ext.declarative import declarative_base, Column
-from sqlalchemy import Integer, String, create_engine, BigInteger
+from sqlalchemy import Integer, String, create_engine, BigInteger, Index, UniqueConstraint
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import text as sqltext
 from sqlalchemy.exc import OperationalError, TimeoutError
@@ -35,12 +35,19 @@ def get_user_nodes_table(driver, base=_Base):
             A user is represented by an email, a uid and its allocated node.
             """
             __tablename__ = 'user_nodes'
-            email = Column(String(255), primary_key=True, index=True)
-            node = Column(String(64), primary_key=True, nullable=False)
-            service = Column(String(30))
-            version = Column(String(30), primary_key=True)
-            uid = Column(BigInteger(), index=True, autoincrement=True,
-                         unique=True, nullable=False)
+            email = Column(String(255), nullable=False)
+            node = Column(String(64), nullable=False)
+            service = Column(String(30), nullable=False)
+            version = Column(String(30), nullable=False)
+            uid = Column(BigInteger(), primary_key=True, autoincrement=True,
+                         nullable=False)
+            __table_args__ = (Index('userlookup_idx',
+                                    'email', 'service', 'version'),
+                              Index('nodelookup_idx',
+                                    'node', 'service'),
+                              UniqueConstraint('email', 'service', 'version'),
+                              {'mysql_engine': 'InnoDB'},
+                             )
 
         return UserNodes.__table__
     else:
