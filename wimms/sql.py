@@ -83,15 +83,19 @@ tables.append(service_pattern)
 class _NodesBase(object):
     """A Table that keep tracks of all nodes per service
     """
-    service = Column(String(30), primary_key=True, nullable=False)
-    node = Column(String(64), primary_key=True, nullable=False)
-    version = Column(String(30), primary_key=True, nullable=False)
+    id = Column(BigInteger(), primary_key=True, autoincrement=True,
+                nullable=False)
+    service = Column(String(30), nullable=False)
+    node = Column(String(64), nullable=False)
+    version = Column(String(30), nullable=False)
     available = Column(Integer(11), default=0, nullable=False)
     current_load = Column(Integer(11), default=0, nullable=False)
     capacity = Column(Integer(11), default=0, nullable=False)
     downed = Column(Integer(6), default=0, nullable=False)
     backoff = Column(Integer(11), default=0, nullable=False)
-
+    __table_args__ = (UniqueConstraint('service', 'node', 'version'),
+                      {'mysql_engine': 'InnoDB'},
+                     )
 
 class Nodes(_NodesBase, _Base):
     __tablename__ = 'nodes'
