@@ -42,10 +42,9 @@ def get_user_nodes_table(driver, base=_Base):
             uid = Column(BigInteger(), primary_key=True, autoincrement=True,
                          nullable=False)
             __table_args__ = (Index('userlookup_idx',
-                                    'email', 'service', 'version'),
+                                    'email', 'service', 'version', unique=True),
                               Index('nodelookup_idx',
                                     'node', 'service'),
-                              UniqueConstraint('email', 'service', 'version'),
                               {'mysql_engine': 'InnoDB'},
                              )
 
