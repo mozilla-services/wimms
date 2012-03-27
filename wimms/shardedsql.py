@@ -23,8 +23,11 @@ class ShardedSQLMetadata(SQLMetadata):
 
         for database in databases.split(','):
             database = database.split(';')
-
             service, sqluri = (el.strip() for el in database)
+
+            if self._dbkey(service) in self._dbs:
+                continue
+
             Base = declarative_base()
 
             # XXX will use a shared pool next
@@ -45,17 +48,20 @@ class ShardedSQLMetadata(SQLMetadata):
                 if create_tables:
                     table.create(checkfirst=True)
 
-            self._dbs[service] = engine, nodes, user_nodes, patterns
+            self._dbs[self._dbkey(service)] = (engine, nodes, user_nodes,
+                                               patterns)
+
+    def _dbkey(self, service):
+        return service.split('-')[0]
 
     def _get_engine(self, service=None):
         if service is None:
             raise NotImplementedError()
             return self._dbs.values()[0][0]
-
-        return self._dbs[service.split('-')[0]][0]
+        return self._dbs[self._dbkey(service)][0]
 
     def _get_nodes_table(self, service):
-        return self._dbs[service.split('-')[0]][1]
+        return self._dbs[self._dbkey(service)][1]
 
     def get_patterns(self):
         """Returns all the service URL patterns."""
