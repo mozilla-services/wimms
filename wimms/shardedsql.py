@@ -51,10 +51,11 @@ class ShardedSQLMetadata(SQLMetadata):
         if service is None:
             raise NotImplementedError()
             return self._dbs.values()[0][0]
-        return self._dbs[service][0]
+
+        return self._dbs[service.split('-')[0]][0]
 
     def _get_nodes_table(self, service):
-        return self._dbs[service][1]
+        return self._dbs[service.split('-')[0]][1]
 
     def get_patterns(self):
         """Returns all the service URL patterns."""

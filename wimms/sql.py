@@ -81,7 +81,10 @@ class SQLMetadata(object):
         if engine is None:
             engine = kwds.get('engine')
             if engine is None:
-                engine = self._get_engine(kwds.get('service'))
+                service = kwds.get('service')
+                if service is not None:
+                    service = service.split('-')[0]
+                engine = self._get_engine(service)
             else:
                 del kwds['engine']
 
