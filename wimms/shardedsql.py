@@ -67,9 +67,11 @@ class ShardedSQLMetadata(SQLMetadata):
         """Returns all the service URL patterns."""
         # loop on all the tables to combine the pattern information.
         patterns = []
-        for service, table in self._service_patterns.items():
+        for service, elements in self._dbs.items():
+            engine = elements[0]
+            table = elements[-1]
             try:
-                results = self._safe_execute(select([table]), service=service)
+                results = self._safe_execute(select([table]), engine=engine)
             except BackendError:
                 continue
 
