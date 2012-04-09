@@ -16,7 +16,9 @@ from wimms.sql import SQLMetadata
 
 class ShardedSQLMetadata(SQLMetadata):
 
-    def __init__(self, databases, create_tables=False, **kw):
+    def __init__(self, databases, create_tables=False, pool_size=100,
+                 pool_recycle=60, pool_timeout=30, max_overflow=10, **kw):
+
         # databases is a string containing one sqluri per service:
         #   service1;sqluri1,service2;sqluri2
         self._dbs = {}
@@ -29,9 +31,20 @@ class ShardedSQLMetadata(SQLMetadata):
                 continue
 
             Base = declarative_base()
+            if (sqluri.startswith('mysql') or
+                sqluri.startswith('pymysql')):
+                engine = create_engine(sqluri,
+                                       pool_size=pool_size,
+                                       pool_recycle=pool_recycle,
+                                       pool_timeout=pool_timeout,
+                                       max_overflow=max_overflow,
+                                       logging_name='wimms')
 
-            # XXX will use a shared pool next
-            engine = create_engine(sqluri, poolclass=NullPool)
+            else:
+
+                # XXX will use a shared pool next
+                engine = create_engine(sqluri, poolclass=NullPool)
+
             engine.echo = kw.get('echo', False)
 
             if engine.driver == 'pysqlite':

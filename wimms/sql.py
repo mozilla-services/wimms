@@ -49,9 +49,21 @@ WRITEABLE_FIELDS = ['available', 'current_load', 'capacity', 'downed',
 
 class SQLMetadata(object):
 
-    def __init__(self, sqluri, create_tables=False, **kw):
+    def __init__(self, sqluri, create_tables=False, pool_size=100,
+                 pool_recycle=60, pool_timeout=30, max_overflow=10, **kw):
         self.sqluri = sqluri
-        self._engine = create_engine(sqluri, poolclass=NullPool)
+        if (self.sqluri.startswith('mysql') or
+            self.sqluri.startswith('pymysql')):
+            self._engine = create_engine(sqluri,
+                                         pool_size=pool_size,
+                                         pool_recycle=pool_recycle,
+                                         pool_timeout=pool_timeout,
+                                         max_overflow=max_overflow,
+                                         logging_name='wimms')
+
+        else:
+            self._engine = create_engine(sqluri, poolclass=NullPool)
+
         self._engine.echo = kw.get('echo', False)
 
         if self._engine.driver == 'pysqlite':
