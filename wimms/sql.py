@@ -109,10 +109,13 @@ class SQLMetadata(object):
     #
     def get_node(self, email, service):
         res = self._safe_execute(_GET, email=email, service=service)
-        res = res.fetchone()
-        if res is None:
-            return None, None
-        return res.uid, res.node
+        try:
+            one = res.fetchone()
+            if one is None:
+                return None, None
+            return one.uid, one.node
+        finally:
+            res.close()
 
     def allocate_node(self, email, service):
         if self.get_node(email, service) != (None, None):
@@ -124,9 +127,11 @@ class SQLMetadata(object):
         # saving the node
         res = self._safe_execute(_INSERT, email=email, service=service,
                                  node=node)
+        lastrowid = res.lastrowid
+        res.close()
 
         # returning the node and last inserted uid
-        return res.lastrowid, node
+        return lastrowid, node
 
     #
     # Nodes management
@@ -134,7 +139,10 @@ class SQLMetadata(object):
     def get_patterns(self):
         """Returns all the service URL patterns."""
         query = select([self.patterns])
-        return self._safe_execute(query)
+        res = self._safe_execute(query)
+        patterns = res.fetchall()
+        res.close()
+        return patterns
 
     def _get_nodes_table(self, service):
         return self.nodes
@@ -154,17 +162,22 @@ class SQLMetadata(object):
         query = query.order_by(nodes.c.current_load /
                                nodes.c.capacity).limit(1)
         res = self._safe_execute(query)
-        res = res.fetchone()
-        if res is None:
+        one = res.fetchone()
+        if one is None:
             # unable to get a node
+            res.close()
             raise BackendError('unable to get a node')
 
-        node = str(res.node)
+        node = str(one.node)
+        res.close()
+
         # updating the table
         where = [nodes.c.service == service, nodes.c.node == node]
         where = and_(*where)
         fields = {'available': nodes.c.available - 1,
                   'current_load': nodes.c.current_load + 1}
         query = update(nodes, where, fields)
-        self._safe_execute(query)
-        return res.node
+        con = self._safe_execute(query, close=True)
+        con.close()
+
+        return node
