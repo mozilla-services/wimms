@@ -91,5 +91,5 @@ class ShardedSQLMetadata(SQLMetadata):
             for result in results:
                 if result not in patterns:
                     patterns.append(result)
-
+            results.close()
         return patterns
