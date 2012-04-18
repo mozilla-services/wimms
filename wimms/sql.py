@@ -50,16 +50,21 @@ WRITEABLE_FIELDS = ['available', 'current_load', 'capacity', 'downed',
 class SQLMetadata(object):
 
     def __init__(self, sqluri, create_tables=False, pool_size=100,
-                 pool_recycle=60, pool_timeout=30, max_overflow=10, **kw):
+                 pool_recycle=60, pool_timeout=30, max_overflow=10,
+                 pool_reset_on_return='rollback', **kw):
         self.sqluri = sqluri
+        if pool_reset_on_return.lower() in ('', 'none'):
+            pool_reset_on_return = None
+
         if (self.sqluri.startswith('mysql') or
             self.sqluri.startswith('pymysql')):
             self._engine = create_engine(sqluri,
-                                         pool_size=pool_size,
-                                         pool_recycle=pool_recycle,
-                                         pool_timeout=pool_timeout,
-                                         max_overflow=max_overflow,
-                                         logging_name='wimms')
+                                    pool_size=pool_size,
+                                    pool_recycle=pool_recycle,
+                                    pool_timeout=pool_timeout,
+                                    pool_reset_on_return=pool_reset_on_return,
+                                    max_overflow=max_overflow,
+                                    logging_name='wimms')
 
         else:
             self._engine = create_engine(sqluri, poolclass=NullPool)

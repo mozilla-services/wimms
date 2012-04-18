@@ -17,11 +17,15 @@ from wimms.sql import SQLMetadata
 class ShardedSQLMetadata(SQLMetadata):
 
     def __init__(self, databases, create_tables=False, pool_size=100,
-                 pool_recycle=60, pool_timeout=30, max_overflow=10, **kw):
+                 pool_recycle=60, pool_timeout=30, max_overflow=10,
+                 pool_reset_on_return='rollback', **kw):
 
         # databases is a string containing one sqluri per service:
         #   service1;sqluri1,service2;sqluri2
         self._dbs = {}
+        if pool_reset_on_return.lower() in ('', 'none'):
+            pool_reset_on_return = None
+
 
         for database in databases.split(','):
             database = database.split(';')
@@ -34,11 +38,12 @@ class ShardedSQLMetadata(SQLMetadata):
             if (sqluri.startswith('mysql') or
                 sqluri.startswith('pymysql')):
                 engine = create_engine(sqluri,
-                                       pool_size=pool_size,
-                                       pool_recycle=pool_recycle,
-                                       pool_timeout=pool_timeout,
-                                       max_overflow=max_overflow,
-                                       logging_name='wimms')
+                                   pool_size=pool_size,
+                                   pool_recycle=pool_recycle,
+                                   pool_timeout=pool_timeout,
+                                   max_overflow=max_overflow,
+                                   pool_reset_on_return=pool_reset_on_return,
+                                   logging_name='wimms')
 
             else:
 
