@@ -25,7 +25,7 @@ _Base = declarative_base()
 
 _GET = sqltext("""\
 select
-    uid, node
+    uid, node, tos
 from
     user_nodes
 where
@@ -37,14 +37,21 @@ and
 
 _INSERT = sqltext("""\
 insert into user_nodes
-    (service, email, node)
+    (service, email, node, tos_signed)
 values
-    (:service, :email, :node)
+    (:service, :email, :node, :tos_signed)
 """)
 
 
 WRITEABLE_FIELDS = ['available', 'current_load', 'capacity', 'downed',
                     'backoff']
+
+_INSERT_METADATA = sqltext("""\
+insert into metadata
+    (service, name, value)
+values
+    (:service, :name, :value)
+""")
 
 
 class SQLMetadata(object):
@@ -79,8 +86,10 @@ class SQLMetadata(object):
         self.user_nodes = get_cls('user_nodes', _Base)
         self.nodes = get_cls('nodes', _Base)
         self.patterns = get_cls('service_pattern', _Base)
+        self.metadata = get_cls('metadata', _Base)
 
-        for table in [self.user_nodes, self.nodes, self.patterns]:
+        for table in (self.user_nodes, self.nodes, self.patterns,
+                      self.metadata):
             table.metadata.bind = self._engine
             if create_tables:
                 table.create(checkfirst=True)
@@ -117,13 +126,19 @@ class SQLMetadata(object):
         try:
             one = res.fetchone()
             if one is None:
-                return None, None
-            return one.uid, one.node
+                return None, None, None
+            if one.tos != True:
+                tos = self.get_metadata(service, 'terms_of_service')
+            else:
+                tos = None
+
+            return one.uid, one.node, tos
         finally:
             res.close()
 
     def allocate_node(self, email, service):
-        if self.get_node(email, service) != (None, None):
+        uid, node, _ = self.get_node(email, service)
+        if (uid, node) != (None, None):
             raise BackendError("Node already assigned")
 
         # getting a node
@@ -131,7 +146,7 @@ class SQLMetadata(object):
 
         # saving the node
         res = self._safe_execute(_INSERT, email=email, service=service,
-                                 node=node)
+                                 node=node, tos_signed=True)
         lastrowid = res.lastrowid
         res.close()
 
@@ -186,3 +201,29 @@ class SQLMetadata(object):
         con.close()
 
         return node
+
+    def get_metadata_table(self, service):
+        return self.metadata
+
+    def set_metadata(self, service, name, value):
+        res = self._safe_execute(_INSERT_METADATA, service=service,
+                                 name=name, value=value)
+        res.close()
+
+    def get_metadata(self, service, name=None):
+        metadata = self._get_metadata_table(service)
+        where = [metadata.c.service == service]
+        if name is not None:
+            where.append(metadata.c.name == name)
+
+        query = select([metadata]).where(and_(*where))
+        res = self._safe_execute(query)
+
+        if name is not None:
+            one = res.fetchone()
+            if one is not None:
+                return one.value
+            else:
+                return None
+        else:
+            return res.fetchall()

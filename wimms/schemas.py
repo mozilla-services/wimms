@@ -5,7 +5,7 @@
     Table schema for MySQL and sqlite
 """
 from sqlalchemy.ext.declarative import declared_attr, Column
-from sqlalchemy import Integer, String, BigInteger, Index
+from sqlalchemy import Integer, String, BigInteger, Index, Boolean
 
 
 bases = {}
@@ -32,6 +32,7 @@ class _UserNodesBase(object):
     email = Column(String(255), nullable=False)
     node = Column(String(64), nullable=False)
     service = Column(String(30), nullable=False)
+    tos_signed = Column(Boolean(), nullable=True)
     uid = Column(BigInteger(), primary_key=True, autoincrement=True,
                     nullable=False)
 
@@ -41,11 +42,11 @@ class _UserNodesBase(object):
         return (Index('userlookup_idx',
                       'email', 'service', unique=True),
                 Index('nodelookup_idx',
-                      'node', 'service'),
+                      'node', 'service', 'tos_signed'),
                       {'mysql_engine': 'InnoDB',
                         'mysql_charset': 'utf8',
                         },
-                        )
+               )
 
 _add('user_nodes', _UserNodesBase)
 
@@ -79,3 +80,15 @@ class _NodesBase(object):
                )
 
 _add('nodes', _NodesBase)
+
+
+class _ServicesMetadataBase(object):
+    """A table containing all the metadata information for the different
+    services.
+    """
+
+    service = Column(String(30), nullable=False)
+    name = Column(String(30), nullable=False)
+    value = Column(String(128), nullable=True)
+
+_add('metadata', _ServicesMetadataBase)

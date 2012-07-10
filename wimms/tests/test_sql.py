@@ -45,3 +45,9 @@ class TestSQLDB(TestCase):
         self.assertEqual(res[1], wanted)
         uid, node = self.backend.get_node("tarek@mozilla.com", "sync-1.0")
         self.assertEqual(wanted, node)
+
+    def test_metadata(self):
+        tos_url = 'http://url-to-the-tos'
+        self.backend.set_metadata('sync-1.0', 'tos', tos_url)
+        self.assertEquals(tos_url,
+                          self.backend.get_metadata('sync-1.0', 'tos'))
