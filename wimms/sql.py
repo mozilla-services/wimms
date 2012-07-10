@@ -63,6 +63,17 @@ and
     service = :service
 """)
 
+_UPDATE_TOS_FLAGS_BASE = """\
+update user_nodes
+set
+    tos_signed = :value
+where
+    service = :service
+"""
+
+_UPDATE_ALL_TOS_FLAGS = sqltext(_UPDATE_TOS_FLAGS_BASE)
+_UPDATE_TOS_FLAGS = sqltext(_UPDATE_TOS_FLAGS_BASE + "AND email = :email")
+
 
 class SQLMetadata(object):
 
@@ -135,12 +146,13 @@ class SQLMetadata(object):
         res = self._safe_execute(_GET, email=email, service=service)
         try:
             one = res.fetchone()
-            if one is None:
-                return None, None, None
-            if one.tos_signed != True:
-                tos = self.get_metadata(service, 'terms_of_service')
+            if one is None or one.tos_signed != True:
+                tos = self.get_metadata(service, 'terms-of-service')
             else:
                 tos = None
+
+            if one is None:
+                return None, None, tos
 
             return one.uid, one.node, tos
         finally:
@@ -241,4 +253,25 @@ class SQLMetadata(object):
     def update_metadata(self, service, name, value):
         res = self._safe_execute(_UPDATE_METADATA, service=service, name=name,
                                  value=value)
+        res.close()
+
+    def set_tos(self, service, value):
+        """Update the ToS URL for a service and sets the according flag to
+        False. """
+        self.update_metadata(service, 'terms-of-service', value)
+        self.set_tos_flag(service, False)
+
+    def set_tos_flag(self, service, value, email=None):
+        """Update the ToS flag for a service.
+
+        If email is set to None, update the flag for all the users of this
+        service.
+        """
+        if email is None:
+            query = _UPDATE_ALL_TOS_FLAGS
+        else:
+            query = _UPDATE_TOS_FLAGS
+
+        res = self._safe_execute(query, service=service, value=value,
+                                 email=email)
         res.close()

@@ -46,6 +46,17 @@ class TestSQLDB(TestCase):
         uid, node, _ = self.backend.get_node("tarek@mozilla.com", "sync-1.0")
         self.assertEqual(wanted, node)
 
+        # if we have a node assigned but the terms of services aren't set, then
+        # we should return them.
+        self.backend.set_tos('sync-1.0', 'http://new-tos')
+        _, _, tos = self.backend.get_node('tarek@mozilla.com', 'sync-1.0')
+        self.assertEquals(tos, 'http://new-tos')
+
+        # if we're not assigned to a node, then we should return the terms of
+        # service
+        _, _, tos = self.backend.get_node('alexis@mozilla.com', 'sync-1.0')
+        self.assertEquals(tos, 'http://new-tos')
+
     def test_metadata(self):
         tos_url = 'http://tos-url'
         self.backend.set_metadata('sync-1.0', 'tos', tos_url)
@@ -56,3 +67,20 @@ class TestSQLDB(TestCase):
         self.backend.update_metadata('sync-1.0', 'tos', new_url)
         self.assertEquals(new_url,
                           self.backend.get_metadata('sync-1.0', 'tos'))
+
+    def test_update_tos(self):
+        tos_url = 'http://tos-url'
+        self.backend.set_metadata('sync-1.0', 'tos', tos_url)
+        self.backend.allocate_node('alexis@mozilla.com', 'sync-1.0')
+        self.backend.allocate_node('tarek@mozilla.com', 'sync-1.0')
+
+        self.backend.set_tos_flag('sync-1.0', False, 'alexis@mozilla.com')
+        _, _, tos = self.backend.get_node('alexis@mozilla.com', 'sync-1.0')
+        self.assertFalse(tos)
+
+        # the tos flag should be set to false after an update of the tos
+        self.backend.set_tos('sync-1.0', 'http://another-url')
+        _, _, tos = self.backend.get_node('tarek@mozilla.com', 'sync-1.0')
+        self.assertFalse(tos)
+        self.assertEquals('http://another-url',
+                self.backend.get_metadata('sync-1.0', 'terms-of-service'))
