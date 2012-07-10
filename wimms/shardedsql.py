@@ -13,6 +13,12 @@ from sqlalchemy.sql import select
 
 from wimms.sql import SQLMetadata
 
+ENGINE_INDEX = 0
+NODES_INDEX = 1
+USER_NODES_INDEX = 2
+PATTERNS_INDEX = 3
+METADATA_INDEX = 4
+
 
 class ShardedSQLMetadata(SQLMetadata):
 
@@ -25,7 +31,6 @@ class ShardedSQLMetadata(SQLMetadata):
         self._dbs = {}
         if pool_reset_on_return.lower() in ('', 'none'):
             pool_reset_on_return = None
-
 
         for database in databases.split(','):
             database = database.split(';')
@@ -60,14 +65,15 @@ class ShardedSQLMetadata(SQLMetadata):
             user_nodes = get_cls('user_nodes', Base)
             nodes = get_cls('nodes', Base)
             patterns = get_cls('service_pattern', Base)
+            metadata = get_cls('metadata', Base)
 
-            for table in (nodes, user_nodes, patterns):
+            for table in (nodes, user_nodes, patterns, metadata):
                 table.metadata.bind = engine
                 if create_tables:
                     table.create(checkfirst=True)
 
             self._dbs[self._dbkey(service)] = (engine, nodes, user_nodes,
-                                               patterns)
+                                               patterns, metadata)
 
     def _dbkey(self, service):
         return service.split('-')[0]
@@ -75,11 +81,14 @@ class ShardedSQLMetadata(SQLMetadata):
     def _get_engine(self, service=None):
         if service is None:
             raise NotImplementedError()
-            return self._dbs.values()[0][0]
-        return self._dbs[self._dbkey(service)][0]
+            return self._dbs.values()[0][ENGINE_INDEX]
+        return self._dbs[self._dbkey(service)][ENGINE_INDEX]
 
     def _get_nodes_table(self, service):
-        return self._dbs[self._dbkey(service)][1]
+        return self._dbs[self._dbkey(service)][NODES_INDEX]
+
+    def _get_metadata_table(self, service):
+        return self._dbs[self._dbkey(service)][METADATA_INDEX]
 
     def get_patterns(self):
         """Returns all the service URL patterns."""
@@ -87,7 +96,7 @@ class ShardedSQLMetadata(SQLMetadata):
         patterns = []
         for service, elements in self._dbs.items():
             engine = elements[0]
-            table = elements[-1]
+            table = elements[PATTERNS_INDEX]
             try:
                 results = self._safe_execute(select([table]), engine=engine)
             except BackendError:

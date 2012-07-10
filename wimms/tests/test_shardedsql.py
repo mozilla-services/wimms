@@ -3,7 +3,7 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 import os
 
-from wimms.shardedsql import ShardedSQLMetadata
+from wimms.shardedsql import ShardedSQLMetadata, ENGINE_INDEX
 from wimms.tests.test_sql import TestSQLDB
 
 
@@ -25,11 +25,12 @@ class TestSQLShardedDB(TestSQLDB):
                 values ("https://phx12", "sync-1.0", 100, 100, 0, 0, 0)""",
                service='sync-1.0')
 
-        self._sqlite = self.backend._dbs['sync'][0].driver == 'pysqlite'
+        self._sqlite = self.backend._dbs['sync'][ENGINE_INDEX].driver\
+                == 'pysqlite'
 
     def tearDown(self):
         for service, value in self.backend._dbs.items():
-            engine = value[0]
+            engine = value[ENGINE_INDEX]
             sqlite = engine.driver == 'pysqlite'
             if sqlite:
                 filename = str(engine.url).split('sqlite://')[-1]

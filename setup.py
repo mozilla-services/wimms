@@ -12,7 +12,7 @@ with open(os.path.join(here, 'README.rst')) as f:
 with open(os.path.join(here, 'CHANGES.rst')) as f:
     CHANGES = f.read()
 
-requires = ['unittest2', 'mozsvc']
+requires = ['unittest2', 'mozsvc', 'sqlalchemy']
 
 
 setup(name='wimms',

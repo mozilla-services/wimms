@@ -35,7 +35,7 @@ class TestSQLDB(TestCase):
 
     def test_get_node(self):
 
-        unassigned = None, None
+        unassigned = None, None, None
         self.assertEquals(unassigned,
                           self.backend.get_node("tarek@mozilla.com",
                               "sync-1.0"))
@@ -43,7 +43,7 @@ class TestSQLDB(TestCase):
         res = self.backend.allocate_node("tarek@mozilla.com", "sync-1.0")
         wanted = 'https://phx12'
         self.assertEqual(res[1], wanted)
-        uid, node = self.backend.get_node("tarek@mozilla.com", "sync-1.0")
+        uid, node, _ = self.backend.get_node("tarek@mozilla.com", "sync-1.0")
         self.assertEqual(wanted, node)
 
     def test_metadata(self):

@@ -25,7 +25,7 @@ _Base = declarative_base()
 
 _GET = sqltext("""\
 select
-    uid, node, tos
+    uid, node, tos_signed
 from
     user_nodes
 where
@@ -127,7 +127,7 @@ class SQLMetadata(object):
             one = res.fetchone()
             if one is None:
                 return None, None, None
-            if one.tos != True:
+            if one.tos_signed != True:
                 tos = self.get_metadata(service, 'terms_of_service')
             else:
                 tos = None
@@ -202,7 +202,7 @@ class SQLMetadata(object):
 
         return node
 
-    def get_metadata_table(self, service):
+    def _get_metadata_table(self, service):
         return self.metadata
 
     def set_metadata(self, service, name, value):

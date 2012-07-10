@@ -87,8 +87,8 @@ class _ServicesMetadataBase(object):
     services.
     """
 
-    service = Column(String(30), nullable=False)
-    name = Column(String(30), nullable=False)
+    service = Column(String(30), nullable=False, primary_key=True)
+    name = Column(String(30), nullable=False, primary_key=True)
     value = Column(String(128), nullable=True)
 
 _add('metadata', _ServicesMetadataBase)
