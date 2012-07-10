@@ -53,6 +53,16 @@ values
     (:service, :name, :value)
 """)
 
+_UPDATE_METADATA = sqltext("""\
+update metadata
+set
+    value = :value
+where
+    name = :name
+and
+    service = :service
+""")
+
 
 class SQLMetadata(object):
 
@@ -227,3 +237,8 @@ class SQLMetadata(object):
                 return None
         else:
             return res.fetchall()
+
+    def update_metadata(self, service, name, value):
+        res = self._safe_execute(_UPDATE_METADATA, service=service, name=name,
+                                 value=value)
+        res.close()

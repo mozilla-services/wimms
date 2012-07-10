@@ -47,7 +47,12 @@ class TestSQLDB(TestCase):
         self.assertEqual(wanted, node)
 
     def test_metadata(self):
-        tos_url = 'http://url-to-the-tos'
+        tos_url = 'http://tos-url'
         self.backend.set_metadata('sync-1.0', 'tos', tos_url)
         self.assertEquals(tos_url,
+                          self.backend.get_metadata('sync-1.0', 'tos'))
+
+        new_url = 'http://another-url'
+        self.backend.update_metadata('sync-1.0', 'tos', new_url)
+        self.assertEquals(new_url,
                           self.backend.get_metadata('sync-1.0', 'tos'))
