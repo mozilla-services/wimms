@@ -34,7 +34,7 @@ class _UserNodesBase(object):
     service = Column(String(30), nullable=False)
     accepted_conditions = Column(Boolean(), nullable=True)
     uid = Column(BigInteger(), primary_key=True, autoincrement=True,
-                    nullable=False)
+                 nullable=True)
 
     @declared_attr
     def __table_args__(cls):

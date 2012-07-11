@@ -6,15 +6,14 @@ import os
 from wimms.sql import SQLMetadata
 
 
-_SQLURI = os.environ.get('WIMMS_SQLURI', 'sqlite:////tmp/wimms')
-
-
 class TestSQLDB(TestCase):
+
+    _SQLURI = os.environ.get('WIMMS_SQLURI', 'sqlite:////tmp/wimms')
 
     def setUp(self):
         super(TestSQLDB, self).setUp()
 
-        self.backend = SQLMetadata(_SQLURI, create_tables=True)
+        self.backend = SQLMetadata(self._SQLURI, create_tables=True)
 
         # adding a node with 100 slots
         self.backend._safe_execute(
@@ -32,6 +31,7 @@ class TestSQLDB(TestCase):
         else:
             self.backend._safe_execute('delete from nodes')
             self.backend._safe_execute('delete from user_nodes')
+            self.backend._safe_execute('delete from metadata')
 
     def test_get_node(self):
         unassigned = None, None, None
@@ -89,3 +89,8 @@ class TestSQLDB(TestCase):
         _, _, to_accept = self.backend.get_node('alexis@mozilla.com',
                                                 'sync-1.0')
         self.assertIn(tos_url, to_accept)
+
+
+if os.environ.get('WIMMS_MYSQLURI', None) is not None:
+    class TestMySQLDB(TestSQLDB):
+        _SQLURI = os.environ.get('WIMMS_MYSQLURI')
