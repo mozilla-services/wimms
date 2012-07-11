@@ -25,7 +25,7 @@ _Base = declarative_base()
 
 _GET = sqltext("""\
 select
-    uid, node, tos_signed
+    uid, node, accepted_conditions
 from
     user_nodes
 where
@@ -37,9 +37,9 @@ and
 
 _INSERT = sqltext("""\
 insert into user_nodes
-    (service, email, node, tos_signed)
+    (service, email, node, accepted_conditions)
 values
-    (:service, :email, :node, :tos_signed)
+    (:service, :email, :node, :accepted_conditions)
 """)
 
 
@@ -137,14 +137,13 @@ class SQLMetadata(object):
         res = self._safe_execute(_GET, email=email, service=service)
         try:
             one = res.fetchone()
-            if one is None or one.tos_signed == 0:
+            if one is None or one.accepted_conditions == 0:
                 to_accept = [i[0] for i in self.get_metadata(
                       service, needs_acceptance=True, fields=['value', ])]
 
                 if not to_accept:
                     to_accept = None
             else:
-                # ToS are signed
                 to_accept = None
 
             if one is None:
@@ -163,7 +162,7 @@ class SQLMetadata(object):
 
         # saving the node
         res = self._safe_execute(_INSERT, email=email, service=service,
-                                 node=node, tos_signed=1)
+                                 node=node, accepted_conditions=1)
         lastrowid = res.lastrowid
         res.close()
 
@@ -271,8 +270,8 @@ class SQLMetadata(object):
         query = update(metadata, where, fields)
         self._safe_execute(query, close=True)
 
-    def set_tos_flag(self, service, value, email=None):
-        """Update the ToS flag for a service.
+    def set_accepted_conditions_flag(self, service, value, email=None):
+        """Update the 'conditions accepted' flag for a service.
 
         If email is set to None, update the flag for all the users of this
         service.
@@ -285,6 +284,6 @@ class SQLMetadata(object):
 
         where = and_(*where)
 
-        fields = {'tos_signed': value}
+        fields = {'accepted_conditions': value}
         query = update(user_nodes, where, fields)
         self._safe_execute(query, close=True)

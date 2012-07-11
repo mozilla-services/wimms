@@ -32,7 +32,7 @@ class _UserNodesBase(object):
     email = Column(String(255), nullable=False)
     node = Column(String(64), nullable=False)
     service = Column(String(30), nullable=False)
-    tos_signed = Column(Boolean(), nullable=True)
+    accepted_conditions = Column(Boolean(), nullable=True)
     uid = Column(BigInteger(), primary_key=True, autoincrement=True,
                     nullable=False)
 
@@ -42,7 +42,7 @@ class _UserNodesBase(object):
         return (Index('userlookup_idx',
                       'email', 'service', unique=True),
                 Index('nodelookup_idx',
-                      'node', 'service', 'tos_signed'),
+                      'node', 'service', 'accepted_conditions'),
                       {'mysql_engine': 'InnoDB',
                         'mysql_charset': 'utf8',
                         },

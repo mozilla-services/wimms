@@ -47,32 +47,34 @@ class TestSQLDB(TestCase):
 
         # if we have a node assigned but the terms of services aren't set to
         # true we should return them.
-        self.backend.set_metadata('sync-1.0', 'tos', 'http://tos',
-                needs_acceptance=True)
-        self.backend.set_tos_flag('sync-1.0', False)
+        self.backend.set_metadata('sync-1.0', 'terms-of-service',
+                'http://tos', needs_acceptance=True)
+        self.backend.set_accepted_conditions_flag('sync-1.0', False)
 
-        _, _, tos = self.backend.get_node('tarek@mozilla.com', 'sync-1.0')
-        self.assertIn('http://tos', tos)
+        _, _, to_accept = self.backend.get_node('tarek@mozilla.com',
+                                                'sync-1.0')
+        self.assertIn('http://tos', to_accept)
 
         # if we're not assigned to a node, then we should return the terms of
         # service
-        _, _, tos = self.backend.get_node('alexis@mozilla.com', 'sync-1.0')
-        self.assertIn('http://tos', tos)
+        _, _, to_accept = self.backend.get_node('alexis@mozilla.com',
+                                                'sync-1.0')
+        self.assertIn('http://tos', to_accept)
 
     def test_metadata(self):
         tos_url = 'http://tos'
-        self.backend.set_metadata('sync-1.0', 'tos', tos_url)
+        self.backend.set_metadata('sync-1.0', 'terms-of-service', tos_url)
         self.assertEquals(tos_url,
-                          self.backend.get_metadata('sync-1.0', 'tos'))
+                  self.backend.get_metadata('sync-1.0', 'terms-of-service'))
 
         new_url = 'http://another-url'
-        self.backend.update_metadata('sync-1.0', 'tos', new_url)
+        self.backend.update_metadata('sync-1.0', 'terms-of-service', new_url)
         self.assertEquals(new_url,
-                          self.backend.get_metadata('sync-1.0', 'tos'))
+                  self.backend.get_metadata('sync-1.0', 'terms-of-service'))
 
-        self.backend.update_metadata('sync-1.0', 'tos', 'http://yet-another',
-                                     needs_acceptance=True)
-        self.assertIn((u'tos', u'http://yet-another', True),
+        self.backend.update_metadata('sync-1.0', 'terms-of-service',
+                'http://yet-another', needs_acceptance=True)
+        self.assertIn(('terms-of-service', 'http://yet-another', True),
             self.backend.get_metadata('sync-1.0', needs_acceptance=True))
 
     def test_update_tos(self):
@@ -82,6 +84,8 @@ class TestSQLDB(TestCase):
         self.backend.allocate_node('alexis@mozilla.com', 'sync-1.0')
         self.backend.allocate_node('tarek@mozilla.com', 'sync-1.0')
 
-        self.backend.set_tos_flag('sync-1.0', False, 'alexis@mozilla.com')
-        _, _, tos = self.backend.get_node('alexis@mozilla.com', 'sync-1.0')
-        self.assertIn(tos_url, tos)
+        self.backend.set_accepted_conditions_flag('sync-1.0', False,
+                                                  'alexis@mozilla.com')
+        _, _, to_accept = self.backend.get_node('alexis@mozilla.com',
+                                                'sync-1.0')
+        self.assertIn(tos_url, to_accept)
