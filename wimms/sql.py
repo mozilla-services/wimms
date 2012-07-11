@@ -48,9 +48,9 @@ WRITEABLE_FIELDS = ['available', 'current_load', 'capacity', 'downed',
 
 _INSERT_METADATA = sqltext("""\
 insert into metadata
-    (service, name, value)
+    (service, name, value, needs_acceptance)
 values
-    (:service, :name, :value)
+    (:service, :name, :value, :needs_acceptance)
 """)
 
 
@@ -126,30 +126,30 @@ class SQLMetadata(object):
         isn't assigned to a node yet, return None.
 
         In addition to the node, this method returns the uid of the user and
-        the terms of service url she needs to agree to, in case there is a need
-        to.
+        a list of urls that the user needs to accept: (uid, node, to_accept)
 
-        We can distinguish the following cases:
-
-            - the user isn't know. Return (None, None, tos_url)
-            - the user is known, assigned but didn't signed the tos, return
-              (uid, node, tos_url)
-            - the user agreed to the terms of service and is assigned a node
-              (uid, node, None)
+        - If the user isn't know. idx and node are set to None.
+        - If the user is known, idx and node are her id and assigned node.
+        - If the user didn't accepted everything, to_accept contains a list of
+          urls to read and accept.
+        - If the user agreed to the preconditions, to_accept is set to None
         """
         res = self._safe_execute(_GET, email=email, service=service)
         try:
             one = res.fetchone()
             if one is None or one.tos_signed == 0:
-                # the user isn't assigned to a node or didn't signed the ToS.
-                tos = self.get_metadata(service, 'terms-of-service')
+                to_accept = [i[0] for i in self.get_metadata(
+                      service, needs_acceptance=True, fields=['value', ])]
+
+                if not to_accept:
+                    to_accept = None
             else:
                 # ToS are signed
-                tos = None
+                to_accept = None
 
             if one is None:
-                return None, None, tos
-            return one.uid, one.node, tos
+                return None, None, to_accept
+            return one.uid, one.node, to_accept
         finally:
             res.close()
 
@@ -225,18 +225,30 @@ class SQLMetadata(object):
     def _get_user_nodes_table(self, service):
         return self.user_nodes
 
-    def set_metadata(self, service, name, value):
+    def set_metadata(self, service, name, value, needs_acceptance=False):
         res = self._safe_execute(_INSERT_METADATA, service=service,
-                                 name=name, value=value)
+                                 name=name, value=value,
+                                 needs_acceptance=needs_acceptance)
         res.close()
 
-    def get_metadata(self, service, name=None):
+    def get_metadata(self, service, name=None, needs_acceptance=None,
+            fields=None):
         metadata = self._get_metadata_table(service)
         where = [metadata.c.service == service]
+
         if name is not None:
             where.append(metadata.c.name == name)
 
-        query = select([metadata]).where(and_(*where))
+        if needs_acceptance is not None:
+            where.append(metadata.c.needs_acceptance == needs_acceptance)
+
+        if fields is not None:
+            fields = [getattr(metadata.c, f) for f in fields]
+        else:
+            fields = [metadata.c.name, metadata.c.value,
+                      metadata.c.needs_acceptance]
+
+        query = select(fields).where(and_(*where))
         res = self._safe_execute(query)
 
         if name is not None:
@@ -248,22 +260,16 @@ class SQLMetadata(object):
         else:
             return res.fetchall()
 
-    def update_metadata(self, service, name, value):
+    def update_metadata(self, service, name, value, needs_acceptance=False):
 
         metadata = self._get_metadata_table(service)
 
         where = [metadata.c.service == service, metadata.c.name == name]
         where = and_(*where)
 
-        fields = {'value': value}
+        fields = {'value': value, 'needs_acceptance': needs_acceptance}
         query = update(metadata, where, fields)
         self._safe_execute(query, close=True)
-
-    def set_tos(self, service, url):
-        """Update the ToS URL for a service and sets the according flag to
-        False. """
-        self.update_metadata(service, 'terms-of-service', url)
-        self.set_tos_flag(service, 0)
 
     def set_tos_flag(self, service, value, email=None):
         """Update the ToS flag for a service.
