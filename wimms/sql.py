@@ -63,17 +63,6 @@ and
     service = :service
 """)
 
-_UPDATE_TOS_FLAGS_BASE = """\
-update user_nodes
-set
-    tos_signed = :value
-where
-    service = :service
-"""
-
-_UPDATE_ALL_TOS_FLAGS = sqltext(_UPDATE_TOS_FLAGS_BASE)
-_UPDATE_TOS_FLAGS = sqltext(_UPDATE_TOS_FLAGS_BASE + "AND email = :email")
-
 
 class SQLMetadata(object):
 
@@ -143,17 +132,33 @@ class SQLMetadata(object):
     # Node allocation
     #
     def get_node(self, email, service):
+        """Return the node of an user for a particular service. If the user
+        isn't assigned to a node yet, return None.
+
+        In addition to the node, this method returns the uid of the user and
+        the terms of service url she needs to agree to, in case there is a need
+        to.
+
+        We can distinguish the following cases:
+
+            - the user isn't know. Return (None, None, tos_url)
+            - the user is known, assigned but didn't signed the tos, return
+              (uid, node, tos_url)
+            - the user agreed to the terms of service and is assigned a node
+              (uid, node, None)
+        """
         res = self._safe_execute(_GET, email=email, service=service)
         try:
             one = res.fetchone()
-            if one is None or one.tos_signed != True:
+            if one is None or one.tos_signed == 1:
+                # the user isn't assigned to a node or didn't signed the ToS.
                 tos = self.get_metadata(service, 'terms-of-service')
             else:
+                # ToS are signed
                 tos = None
 
             if one is None:
                 return None, None, tos
-
             return one.uid, one.node, tos
         finally:
             res.close()
@@ -168,7 +173,7 @@ class SQLMetadata(object):
 
         # saving the node
         res = self._safe_execute(_INSERT, email=email, service=service,
-                                 node=node, tos_signed=True)
+                                 node=node, tos_signed=1)
         lastrowid = res.lastrowid
         res.close()
 
@@ -185,9 +190,6 @@ class SQLMetadata(object):
         patterns = res.fetchall()
         res.close()
         return patterns
-
-    def _get_nodes_table(self, service):
-        return self.nodes
 
     def get_best_node(self, service):
         """Returns the 'least loaded' node currently available, increments the
@@ -227,6 +229,12 @@ class SQLMetadata(object):
     def _get_metadata_table(self, service):
         return self.metadata
 
+    def _get_nodes_table(self, service):
+        return self.nodes
+
+    def _get_user_nodes_table(self, service):
+        return self.user_nodes
+
     def set_metadata(self, service, name, value):
         res = self._safe_execute(_INSERT_METADATA, service=service,
                                  name=name, value=value)
@@ -259,7 +267,7 @@ class SQLMetadata(object):
         """Update the ToS URL for a service and sets the according flag to
         False. """
         self.update_metadata(service, 'terms-of-service', value)
-        self.set_tos_flag(service, False)
+        self.set_tos_flag(service, 0)
 
     def set_tos_flag(self, service, value, email=None):
         """Update the ToS flag for a service.
@@ -267,11 +275,15 @@ class SQLMetadata(object):
         If email is set to None, update the flag for all the users of this
         service.
         """
-        if email is None:
-            query = _UPDATE_ALL_TOS_FLAGS
-        else:
-            query = _UPDATE_TOS_FLAGS
+        user_nodes = self._get_user_nodes_table(service)
 
-        res = self._safe_execute(query, service=service, value=value,
-                                 email=email)
-        res.close()
+        where = [user_nodes.c.service == service, ]
+        if email is not None:
+            where.append(user_nodes.c.email == email)
+
+        where = and_(*where)
+
+        fields = {'tos_signed': value}
+        query = update(user_nodes, where, fields)
+        con = self._safe_execute(query, close=True)
+        con.close()

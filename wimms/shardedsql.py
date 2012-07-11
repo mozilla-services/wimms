@@ -15,7 +15,7 @@ from wimms.sql import SQLMetadata
 
 ENGINE_INDEX = 0
 NODES_INDEX = 1
-USER_NODES_INDEX = 2
+USERNODES_INDEX = 2
 PATTERNS_INDEX = 3
 METADATA_INDEX = 4
 
@@ -84,11 +84,17 @@ class ShardedSQLMetadata(SQLMetadata):
             return self._dbs.values()[0][ENGINE_INDEX]
         return self._dbs[self._dbkey(service)][ENGINE_INDEX]
 
+    def _get_table(self, service, index):
+        return self._dbs[self._dbkey(service)][index]
+
     def _get_nodes_table(self, service):
-        return self._dbs[self._dbkey(service)][NODES_INDEX]
+        return self._get_table(service, NODES_INDEX)
 
     def _get_metadata_table(self, service):
-        return self._dbs[self._dbkey(service)][METADATA_INDEX]
+        return self._get_table(service, METADATA_INDEX)
+
+    def _get_user_nodes_table(self, service):
+        return self._get_table(service, USERNODES_INDEX)
 
     def get_patterns(self):
         """Returns all the service URL patterns."""
