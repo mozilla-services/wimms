@@ -150,7 +150,7 @@ class SQLMetadata(object):
         res = self._safe_execute(_GET, email=email, service=service)
         try:
             one = res.fetchone()
-            if one is None or one.tos_signed == 1:
+            if one is None or one.tos_signed == 0:
                 # the user isn't assigned to a node or didn't signed the ToS.
                 tos = self.get_metadata(service, 'terms-of-service')
             else:
