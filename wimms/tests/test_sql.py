@@ -68,16 +68,16 @@ class TestSQLDB(TestCase):
                   self.backend.get_metadata('sync-1.0', 'terms-of-service'))
 
         new_url = 'http://another-url'
-        self.backend.update_metadata('sync-1.0', 'terms-of-service', new_url)
+        self.backend.set_metadata('sync-1.0', 'terms-of-service', new_url)
         self.assertEquals(new_url,
                   self.backend.get_metadata('sync-1.0', 'terms-of-service'))
 
-        self.backend.update_metadata('sync-1.0', 'terms-of-service',
+        self.backend.set_metadata('sync-1.0', 'terms-of-service',
                 'http://yet-another', needs_acceptance=True)
         self.assertIn(('terms-of-service', 'http://yet-another', True),
             self.backend.get_metadata('sync-1.0', needs_acceptance=True))
 
-    def test_update_tos(self):
+    def test_update_metadata(self):
         tos_url = 'http://tos'
         self.backend.set_metadata('sync-1.0', 'terms-of-service', tos_url,
                 needs_acceptance=True)

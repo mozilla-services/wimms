@@ -225,10 +225,29 @@ class SQLMetadata(object):
         return self.user_nodes
 
     def set_metadata(self, service, name, value, needs_acceptance=False):
-        res = self._safe_execute(_INSERT_METADATA, service=service,
-                                 name=name, value=value,
-                                 needs_acceptance=needs_acceptance)
-        res.close()
+        def _insert():
+            self._safe_execute(_INSERT_METADATA, service=service, name=name,
+                               value=value, needs_acceptance=needs_acceptance,
+                               close=True)
+
+        def _update():
+
+            where = [metadata.c.service == service, metadata.c.name == name]
+            where = and_(*where)
+
+            fields = {'value': value, 'needs_acceptance': needs_acceptance}
+            query = update(metadata, where, fields)
+            self._safe_execute(query, close=True)
+
+        # first do a request to check if the metadata record exists or not
+        metadata = self._get_metadata_table(service)
+        where = [metadata.c.service == service, metadata.c.name == name]
+        query = select([metadata.c.value]).where(and_(*where))
+        res = self._safe_execute(query, close=True)
+        if res.fetchone() is None:
+            return _insert()
+        else:
+            return _update()
 
     def get_metadata(self, service, name=None, needs_acceptance=None,
             fields=None):
@@ -258,17 +277,6 @@ class SQLMetadata(object):
                 return None
         else:
             return res.fetchall()
-
-    def update_metadata(self, service, name, value, needs_acceptance=False):
-
-        metadata = self._get_metadata_table(service)
-
-        where = [metadata.c.service == service, metadata.c.name == name]
-        where = and_(*where)
-
-        fields = {'value': value, 'needs_acceptance': needs_acceptance}
-        query = update(metadata, where, fields)
-        self._safe_execute(query, close=True)
 
     def set_accepted_conditions_flag(self, service, value, email=None):
         """Update the 'conditions accepted' flag for a service.
