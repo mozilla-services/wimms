@@ -53,16 +53,6 @@ values
     (:service, :name, :value)
 """)
 
-_UPDATE_METADATA = sqltext("""\
-update metadata
-set
-    value = :value
-where
-    name = :name
-and
-    service = :service
-""")
-
 
 class SQLMetadata(object):
 
@@ -259,14 +249,20 @@ class SQLMetadata(object):
             return res.fetchall()
 
     def update_metadata(self, service, name, value):
-        res = self._safe_execute(_UPDATE_METADATA, service=service, name=name,
-                                 value=value)
-        res.close()
 
-    def set_tos(self, service, value):
+        metadata = self._get_metadata_table(service)
+
+        where = [metadata.c.service == service, metadata.c.name == name]
+        where = and_(*where)
+
+        fields = {'value': value}
+        query = update(metadata, where, fields)
+        self._safe_execute(query, close=True)
+
+    def set_tos(self, service, url):
         """Update the ToS URL for a service and sets the according flag to
         False. """
-        self.update_metadata(service, 'terms-of-service', value)
+        self.update_metadata(service, 'terms-of-service', url)
         self.set_tos_flag(service, 0)
 
     def set_tos_flag(self, service, value, email=None):
@@ -285,5 +281,4 @@ class SQLMetadata(object):
 
         fields = {'tos_signed': value}
         query = update(user_nodes, where, fields)
-        con = self._safe_execute(query, close=True)
-        con.close()
+        self._safe_execute(query, close=True)

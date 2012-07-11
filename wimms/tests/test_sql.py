@@ -23,6 +23,7 @@ class TestSQLDB(TestCase):
                 values (1, "https://phx12", "sync-1.0", 100, 100, 0, 0, 0)""")
 
         self._sqlite = self.backend._engine.driver == 'pysqlite'
+        self.backend._engine.echo = True
 
     def tearDown(self):
         if self._sqlite:
@@ -34,11 +35,9 @@ class TestSQLDB(TestCase):
             self.backend._safe_execute('delete from user_nodes')
 
     def test_get_node(self):
-
         unassigned = None, None, None
         self.assertEquals(unassigned,
-                          self.backend.get_node("tarek@mozilla.com",
-                              "sync-1.0"))
+                  self.backend.get_node("tarek@mozilla.com", "sync-1.0"))
 
         res = self.backend.allocate_node("tarek@mozilla.com", "sync-1.0")
         wanted = 'https://phx12'
@@ -46,8 +45,8 @@ class TestSQLDB(TestCase):
         uid, node, _ = self.backend.get_node("tarek@mozilla.com", "sync-1.0")
         self.assertEqual(wanted, node)
 
-        # if we have a node assigned but the terms of services aren't set, then
-        # we should return them.
+        # if we have a node assigned but the terms of services aren't set to
+        # true we should return them.
         self.backend.set_tos('sync-1.0', 'http://tos')
         _, _, tos = self.backend.get_node('tarek@mozilla.com', 'sync-1.0')
         self.assertEquals(tos, 'http://tos')

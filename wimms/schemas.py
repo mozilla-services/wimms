@@ -90,5 +90,6 @@ class _ServicesMetadataBase(object):
     service = Column(String(30), nullable=False, primary_key=True)
     name = Column(String(30), nullable=False, primary_key=True)
     value = Column(String(128), nullable=True)
+    # needs_acceptance = Column(Boolean())
 
 _add('metadata', _ServicesMetadataBase)
