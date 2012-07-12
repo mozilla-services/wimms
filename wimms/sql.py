@@ -138,8 +138,8 @@ class SQLMetadata(object):
         try:
             one = res.fetchone()
             if one is None or one.accepted_conditions == 0:
-                to_accept = [i[0] for i in self.get_metadata(
-                      service, needs_acceptance=True, fields=['value', ])]
+                to_accept = [i.value for i in self.get_metadata(
+                             service, needs_acceptance=True)]
 
                 if not to_accept:
                     to_accept = None
@@ -249,8 +249,7 @@ class SQLMetadata(object):
         else:
             return _update()
 
-    def get_metadata(self, service, name=None, needs_acceptance=None,
-            fields=None):
+    def get_metadata(self, service, name=None, needs_acceptance=None):
         metadata = self._get_metadata_table(service)
         where = [metadata.c.service == service]
 
@@ -260,23 +259,13 @@ class SQLMetadata(object):
         if needs_acceptance is not None:
             where.append(metadata.c.needs_acceptance == needs_acceptance)
 
-        if fields is not None:
-            fields = [getattr(metadata.c, f) for f in fields]
-        else:
-            fields = [metadata.c.name, metadata.c.value,
-                      metadata.c.needs_acceptance]
+        fields = [metadata.c.name, metadata.c.value,
+                  metadata.c.needs_acceptance]
 
         query = select(fields).where(and_(*where))
         res = self._safe_execute(query)
 
-        if name is not None:
-            one = res.fetchone()
-            if one is not None:
-                return one.value
-            else:
-                return None
-        else:
-            return res.fetchall()
+        return res.fetchall()
 
     def set_accepted_conditions_flag(self, service, value, email=None):
         """Update the 'conditions accepted' flag for a service.
