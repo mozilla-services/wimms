@@ -16,7 +16,7 @@ requires = ['unittest2', 'mozsvc']
 
 
 setup(name='wimms',
-      version='0.2',
+      version='0.2.1',
       description='Where Is My Mozilla Service ?',
       long_description=README + '\n\n' + CHANGES,
       classifiers=[
