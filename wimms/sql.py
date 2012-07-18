@@ -155,14 +155,18 @@ class SQLMetadata(object):
     def allocate_node(self, email, service):
         uid, node, _ = self.get_node(email, service)
         if (uid, node) != (None, None):
-            raise BackendError("Node already assigned")
+            return uid, node
 
         # getting a node
         node = self.get_best_node(service)
 
         # saving the node
-        res = self._safe_execute(_INSERT, email=email, service=service,
-                                 node=node, accepted_conditions=1)
+        try:
+            res = self._safe_execute(_INSERT, email=email, service=service,
+                                     node=node)
+        except IntegrityError:
+            return self.get_node(email, service)
+
         lastrowid = res.lastrowid
         res.close()
 
