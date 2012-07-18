@@ -165,7 +165,8 @@ class SQLMetadata(object):
             res = self._safe_execute(_INSERT, email=email, service=service,
                                      node=node)
         except IntegrityError:
-            return self.get_node(email, service)
+            uid, node, _ = self.get_node(email, service)
+            return uid, node
 
         lastrowid = res.lastrowid
         res.close()
