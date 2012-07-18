@@ -15,7 +15,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import text as sqltext
-from sqlalchemy.exc import OperationalError, TimeoutError
+from sqlalchemy.exc import OperationalError, TimeoutError, IntegrityError
 
 from wimms import logger
 
