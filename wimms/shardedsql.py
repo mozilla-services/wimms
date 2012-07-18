@@ -26,7 +26,6 @@ class ShardedSQLMetadata(SQLMetadata):
         if pool_reset_on_return.lower() in ('', 'none'):
             pool_reset_on_return = None
 
-
         for database in databases.split(','):
             database = database.split(';')
             service, sqluri = (el.strip() for el in database)
