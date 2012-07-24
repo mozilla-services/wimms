@@ -1,6 +1,12 @@
 CHANGES
 =======
 
+2012-07-24 - 0.3
+----------------
+
+- Added a metadata table which is able to store information related to the user
+  and service.
+
 2012-07-18 - 0.2.1
 ------------------
 
