@@ -29,9 +29,9 @@ class TestSQLDB(TestCase):
             if os.path.exists(filename):
                 os.remove(filename)
         else:
-            self.backend._safe_execute('delete from nodes')
-            self.backend._safe_execute('delete from user_nodes')
-            self.backend._safe_execute('delete from metadata')
+            self.backend._safe_execute('drop table nodes;')
+            self.backend._safe_execute('drop table user_nodes;')
+            self.backend._safe_execute('drop table metadata;')
 
     def test_get_node(self):
         unassigned = None, None, None
