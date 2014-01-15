@@ -152,7 +152,7 @@ class SQLMetadata(object):
         finally:
             res.close()
 
-    def allocate_node(self, email, service):
+    def allocate_node(self, email, service, accepted_conditions=True):
         uid, node, _ = self.get_node(email, service)
         if (uid, node) != (None, None):
             return uid, node
@@ -163,7 +163,8 @@ class SQLMetadata(object):
         # saving the node
         try:
             res = self._safe_execute(_INSERT, email=email, service=service,
-                                     node=node)
+                                     node=node,
+                                     accepted_conditions=accepted_conditions)
         except IntegrityError:
             uid, node, _ = self.get_node(email, service)
             return uid, node

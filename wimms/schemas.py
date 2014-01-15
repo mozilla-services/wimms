@@ -4,8 +4,8 @@
 """
     Table schema for MySQL and sqlite
 """
-from sqlalchemy.ext.declarative import declared_attr, Column
-from sqlalchemy import Integer, String, BigInteger, Index, Boolean
+from sqlalchemy.ext.declarative import declared_attr
+from sqlalchemy import Column, Integer, String, BigInteger, Index, Boolean
 
 
 bases = {}
