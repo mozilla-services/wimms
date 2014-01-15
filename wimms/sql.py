@@ -41,6 +41,8 @@ and
     service = :service
 order by
     created_at desc, uid desc
+limit
+    20
 """)
 
 
