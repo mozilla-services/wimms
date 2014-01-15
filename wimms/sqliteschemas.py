@@ -4,7 +4,7 @@
 """
     Table schema for Sqlite
 """
-from wimms.schemas import (_UserNodesBase, _NodesBase, _add, Column,
+from wimms.schemas import (_UsersBase, _NodesBase, _add, Column,
                            Integer, declared_attr)
 
 from wimms.schemas import get_cls   # NOQA
@@ -20,11 +20,11 @@ class _SQLITENodesBase(_NodesBase):
 _add('nodes', _SQLITENodesBase)
 
 
-class _SQLITEUserNodesBase(_UserNodesBase):
+class _SQLITEUsersBase(_UsersBase):
     uid = Column(Integer, primary_key=True)
 
     @declared_attr
     def __table_args__(cls):
         return ()
 
-_add('user_nodes', _SQLITEUserNodesBase)
+_add('users', _SQLITEUsersBase)

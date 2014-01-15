@@ -2,10 +2,19 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-    Table schema for MySQL and sqlite
+Table schema for MySQL and sqlite.
+
+We have the following tables:
+
+ services:  lists the available services and their endpoint-url pattern.
+ nodes:  lists the nodes available for each service.
+ users:  lists the user records for each service, along with their
+         metadata and current node assignment.
+
 """
+
 from sqlalchemy.ext.declarative import declared_attr
-from sqlalchemy import Column, Integer, String, BigInteger, Index, Boolean
+from sqlalchemy import Column, Integer, String, BigInteger, Index
 
 
 bases = {}
@@ -24,48 +33,65 @@ def get_cls(name, base_cls):
     return type(name, (base, base_cls), args).__table__
 
 
-class _UserNodesBase(object):
+class _UsersBase(object):
     """This table lists all the users associated to a service.
 
-    A user is represented by an email, a uid and its allocated node.
+    A user is uniquely identified by their email.  For each service they have
+    a uid, an allocated node, and last-seen generation and client-state values.
+    Rows are timestamped for easy cleanup of old records.
     """
+    uid = Column(BigInteger(), primary_key=True, autoincrement=True,
+                 nullable=False)
+    service = Column(Integer(), nullable=False)
     email = Column(String(255), nullable=False)
     node = Column(String(64), nullable=False)
-    service = Column(String(30), nullable=False)
-    accepted_conditions = Column(Boolean(), nullable=True)
-    uid = Column(BigInteger(), primary_key=True, autoincrement=True,
-                 nullable=True)
+    generation = Column(Integer(), nullable=False)
+    client_state = Column(String(32), nullable=False)
+    created_at = Column(Integer(), nullable=False)
+    replaced_at = Column(Integer(), nullable=True)
 
     @declared_attr
     def __table_args__(cls):
+        return (
+            # The only lookup we do is to slurp in all records
+            # for a (service, email) pair, sorted by creation time.
+            Index('lookup_idx', 'email', 'service', 'created_at'),
+            # Prevent duplicate records for a single client_state value.
+            Index('clientstate_idx', 'email', 'service', 'client_state',
+                  unique=True),
+            {'mysql_engine': 'InnoDB', 'mysql_charset': 'utf8'}
+        )
 
-        return (Index('userlookup_idx',
-                      'email', 'service', unique=True),
-                Index('nodelookup_idx',
-                      'node', 'service', 'accepted_conditions'),
-                      {'mysql_engine': 'InnoDB',
-                        'mysql_charset': 'utf8',
-                        },
-               )
-
-_add('user_nodes', _UserNodesBase)
+_add('users', _UsersBase)
 
 
-class _ServicePatternBase(object):
-    """ A table that keeps track of the url pattern.
+class _ServicesBase(object):
+    """This table lists all the available services and their endpoint patterns.
+
+    Service names are expected to be "{app_name}-{app_version}" for example
+    "sync-1.5".  Endpoint patterns can use python formatting options on the
+    keys {uid}, {node} and {service}.
+
+    Having a table for these means that we can internally refer to each service
+    by an integer key, which helps when indexing by service.
     """
-    service = Column(String(30), primary_key=True)
-    pattern = Column(String(128), primary_key=True)
+    id = Column(Integer(), primary_key=True, autoincrement=True,
+                nullable=False)
+    service = Column(String(30), unique=True)
+    pattern = Column(String(128))
 
-_add('service_pattern', _ServicePatternBase)
+_add('services', _ServicesBase)
 
 
 class _NodesBase(object):
-    """A Table that keep tracks of all nodes per service
+    """This table keeps tracks of all nodes available per service
+
+    Each node has a root URL as well as metadata about its current availability
+    and capacity.
     """
     id = Column(BigInteger(), primary_key=True, autoincrement=True,
                 nullable=False)
-    service = Column(String(30), nullable=False)
+    service = Column(Integer(), nullable=False)
     node = Column(String(64), nullable=False)
     available = Column(Integer, default=0, nullable=False)
     current_load = Column(Integer, default=0, nullable=False)
@@ -75,21 +101,9 @@ class _NodesBase(object):
 
     @declared_attr
     def __table_args__(cls):
-        return (Index('unique_idx', 'service', 'node', unique=True),
-                {'mysql_engine': 'InnoDB'},
-               )
+        return (
+            Index('unique_idx', 'service', 'node', unique=True),
+            {'mysql_engine': 'InnoDB', 'mysql_charset': 'utf8'}
+        )
 
 _add('nodes', _NodesBase)
-
-
-class _ServicesMetadataBase(object):
-    """A table containing all the metadata information for the different
-    services.
-    """
-
-    service = Column(String(30), nullable=False, primary_key=True)
-    name = Column(String(30), nullable=False, primary_key=True)
-    value = Column(String(128), nullable=True)
-    needs_acceptance = Column(Boolean())
-
-_add('metadata', _ServicesMetadataBase)
