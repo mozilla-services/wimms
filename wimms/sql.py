@@ -2,11 +2,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 """
-    Metadata Database
+Service Metadata Database.
 
-    Contains for each user a list of node/uid/service
-    Contains a list of nodes and their load, capacity etc
+For each available service, we maintain a list of user accounts and their
+associated uid, node-assignment and metadata.  We also have a list of nodes
+with their load, capacity etc
 """
+import time
 import traceback
 from mozsvc.exceptions import BackendError
 
@@ -20,38 +22,63 @@ from sqlalchemy.exc import OperationalError, TimeoutError, IntegrityError
 from wimms import logger
 
 
+def get_timestamp():
+    """Get current timestamp in milliseconds."""
+    return int(time.time() * 1000)
+
+
 _Base = declarative_base()
 
 
-_GET = sqltext("""\
+_GET_USER_RECORDS = sqltext("""\
 select
-    uid, node, accepted_conditions
+    uid, node, generation, client_state
 from
-    user_nodes
+    users
 where
     email = :email
 and
     service = :service
+order by
+    created_at desc, uid desc
+limit
+    20
 """)
 
 
-_INSERT = sqltext("""\
-insert into user_nodes
-    (service, email, node, accepted_conditions)
+_CREATE_USER_RECORD = sqltext("""\
+insert into
+    users
+    (service, email, node, generation, client_state, created_at, replaced_at)
 values
-    (:service, :email, :node, :accepted_conditions)
+    (:service, :email, :node, :generation, :client_state, :timestamp, NULL)
+""")
+
+
+_UPDATE_GENERATION_NUMBER = sqltext("""\
+update
+    users
+set
+    generation = :generation
+where
+    service = :service and email = :email and
+    generation < :generation and replaced_at is null
+""")
+
+
+_REPLACE_USER_RECORDS = sqltext("""\
+update
+    users
+set
+    replaced_at = :timestamp
+where
+    service = :service and email = :email
+    and replaced_at is null and created_at < :timestamp
 """)
 
 
 WRITEABLE_FIELDS = ['available', 'current_load', 'capacity', 'downed',
                     'backoff']
-
-_INSERT_METADATA = sqltext("""\
-insert into metadata
-    (service, name, value, needs_acceptance)
-values
-    (:service, :name, :value, :needs_acceptance)
-""")
 
 
 class SQLMetadata(object):
@@ -59,20 +86,21 @@ class SQLMetadata(object):
     def __init__(self, sqluri, create_tables=False, pool_size=100,
                  pool_recycle=60, pool_timeout=30, max_overflow=10,
                  pool_reset_on_return='rollback', **kw):
+        self._cached_service_ids = {}
         self.sqluri = sqluri
         if pool_reset_on_return.lower() in ('', 'none'):
             pool_reset_on_return = None
 
-        if (self.sqluri.startswith('mysql') or
-            self.sqluri.startswith('pymysql')):
-            self._engine = create_engine(sqluri,
-                                    pool_size=pool_size,
-                                    pool_recycle=pool_recycle,
-                                    pool_timeout=pool_timeout,
-                                    pool_reset_on_return=pool_reset_on_return,
-                                    max_overflow=max_overflow,
-                                    logging_name='wimms')
-
+        if sqluri.startswith('mysql') or sqluri.startswith('pymysql'):
+            self._engine = create_engine(
+                sqluri,
+                pool_size=pool_size,
+                pool_recycle=pool_recycle,
+                pool_timeout=pool_timeout,
+                pool_reset_on_return=pool_reset_on_return,
+                max_overflow=max_overflow,
+                logging_name='wimms'
+            )
         else:
             self._engine = create_engine(sqluri, poolclass=NullPool)
 
@@ -83,13 +111,11 @@ class SQLMetadata(object):
         else:
             from wimms.schemas import get_cls  # NOQA
 
-        self.user_nodes = get_cls('user_nodes', _Base)
+        self.services = get_cls('services', _Base)
         self.nodes = get_cls('nodes', _Base)
-        self.patterns = get_cls('service_pattern', _Base)
-        self.metadata = get_cls('metadata', _Base)
+        self.users = get_cls('users', _Base)
 
-        for table in (self.user_nodes, self.nodes, self.patterns,
-                      self.metadata):
+        for table in (self.services, self.nodes, self.users):
             table.metadata.bind = self._engine
             if create_tables:
                 table.create(checkfirst=True)
@@ -105,11 +131,12 @@ class SQLMetadata(object):
             engine = None
 
         if engine is None:
-            engine = kwds.get('engine')
+            engine = kwds.pop('engine', None)
             if engine is None:
                 engine = self._get_engine(kwds.get('service'))
-            else:
-                del kwds['engine']
+
+        if 'service' in kwds:
+            kwds['service'] = self._get_service_id(kwds['service'])
 
         try:
             return engine.execute(*args, **kwds)
@@ -118,73 +145,157 @@ class SQLMetadata(object):
             logger.error(err)
             raise BackendError(str(exc))
 
-    #
-    # Node allocation
-    #
-    def get_node(self, email, service):
-        """Return the node of an user for a particular service. If the user
-        isn't assigned to a node yet, return None.
-
-        In addition to the node, this method returns the uid of the user and
-        a list of urls that the user needs to accept: (uid, node, to_accept)
-
-        - If the user isn't know. idx and node are set to None.
-        - If the user is known, idx and node are her id and assigned node.
-        - If the user didn't accepted everything, to_accept contains a list of
-          urls to read and accept.
-        - If the user agreed to the preconditions, to_accept is set to None
-        """
-        res = self._safe_execute(_GET, email=email, service=service)
+    def get_user(self, service, email):
+        params = {'service': service, 'email': email}
+        res = self._safe_execute(_GET_USER_RECORDS, **params)
         try:
-            one = res.fetchone()
-            if one is None or one.accepted_conditions == 0:
-                to_accept = [i.value for i in self.get_metadata(
-                             service, needs_acceptance=True)]
-
-                if not to_accept:
-                    to_accept = None
-            else:
-                to_accept = None
-
-            if one is None:
-                return None, None, to_accept
-            return one.uid, one.node, to_accept
+            row = res.fetchone()
+            if row is None:
+                return None
+            # The first row is the most up-to-date user record.
+            user = {
+                'email': email,
+                'uid': row.uid,
+                'node': row.node,
+                'generation': row.generation,
+                'client_state': row.client_state,
+                'old_client_states': {}
+            }
+            # Any subsequent rows are due to old client-state values.
+            row = res.fetchone()
+            while row is not None:
+                user['old_client_states'][row.client_state] = True
+                row = res.fetchone()
+            return user
         finally:
             res.close()
 
-    def allocate_node(self, email, service, accepted_conditions=True):
-        uid, node, _ = self.get_node(email, service)
-        if (uid, node) != (None, None):
-            return uid, node
-
-        # getting a node
+    def create_user(self, service, email, generation=0, client_state=''):
         node = self.get_best_node(service)
-
-        # saving the node
+        params = {
+            'service': service, 'email': email, 'node': node,
+            'generation': generation, 'client_state': client_state,
+            'timestamp': get_timestamp()
+        }
         try:
-            res = self._safe_execute(_INSERT, email=email, service=service,
-                                     node=node,
-                                     accepted_conditions=accepted_conditions)
+            res = self._safe_execute(_CREATE_USER_RECORD, **params)
         except IntegrityError:
-            uid, node, _ = self.get_node(email, service)
-            return uid, node
+            return self.get_user(service, email)
+        else:
+            res.close()
+            return {
+                'email': email,
+                'uid': res.lastrowid,
+                'node': node,
+                'generation': generation,
+                'client_state': client_state,
+                'old_client_states': {}
+            }
 
-        lastrowid = res.lastrowid
-        res.close()
-
-        # returning the node and last inserted uid
-        return lastrowid, node
+    def update_user(self, service, user, generation=None, client_state=None):
+        if client_state is None:
+            # uid can stay the same, just update the generation number.
+            if generation is not None:
+                params = {
+                    'service': service,
+                    'email': user['email'],
+                    'generation': generation
+                }
+                res = self._safe_execute(_UPDATE_GENERATION_NUMBER, **params)
+                res.close()
+                user['generation'] = max(generation, user['generation'])
+        else:
+            # reject previously-seen client-state strings.
+            if client_state == user['client_state']:
+                raise BackendError('previously seen client-state string')
+            if client_state in user['old_client_states']:
+                raise BackendError('previously seen client-state string')
+            # need to create a new record for new client_state.
+            if generation is not None:
+                generation = max(user['generation'], generation)
+            else:
+                generation = user['generation']
+            now = get_timestamp()
+            params = {
+                'service': service, 'email': user['email'],
+                'node': user['node'], 'timestamp': now,
+                'generation': generation, 'client_state': client_state
+            }
+            try:
+                res = self._safe_execute(_CREATE_USER_RECORD, **params)
+            except IntegrityError:
+                user.update(self.get_user(service, user['email']))
+            else:
+                self.get_user(service, user['email'])
+                user['uid'] = res.lastrowid
+                user['generation'] = generation
+                user['old_client_states'][user['client_state']] = True
+                user['client_state'] = client_state
+                res.close()
+            # mark old records as having been replaced.
+            # if we crash here, they are unmarked and we may fail to
+            # garbage collect them for a while, but the active state
+            # will be undamaged.
+            params = {
+                'service': service, 'email': user['email'], 'timestamp': now
+            }
+            res = self._safe_execute(_REPLACE_USER_RECORDS, **params)
+            res.close()
 
     #
     # Nodes management
     #
+
+    def _get_service_id(self, service):
+        try:
+            return self._cached_service_ids[service]
+        except KeyError:
+            services = self._get_services_table(service)
+            query = select([services.c.id])
+            query = query.where(services.c.service == service)
+            res = self._safe_execute(query)
+            row = res.fetchone()
+            res.close()
+            if row is None:
+                raise BackendError('unknown service: ' + service)
+            self._cached_service_ids[service] = row.id
+            return row.id
+
     def get_patterns(self):
         """Returns all the service URL patterns."""
-        query = select([self.patterns])
+        query = select([self.services])
         res = self._safe_execute(query)
-        patterns = res.fetchall()
+        patterns = list(res.fetchall())
+        for row in patterns:
+            self._cached_service_ids[row.service] = row.id
         res.close()
         return patterns
+
+    def add_service(self, service, pattern, **kwds):
+        """Add definition for a new service."""
+        res = self._safe_execute("""
+          insert into services (service, pattern)
+          values (:servicename, :pattern)
+        """, servicename=service, pattern=pattern, **kwds)
+        res.close()
+        return res.lastrowid
+
+    def add_node(self, service, node, capacity, **kwds):
+        """Add definition for a new node."""
+        res = self._safe_execute(
+            """
+            insert into nodes (id, service, node, available, capacity,
+                               current_load, downed, backoff)
+            values (NULL, :service, :node, :available, :capacity,
+                    :current_load, :downed, :backoff)
+            """,
+            service=service, node=node, capacity=capacity,
+            available=kwds.get('available', capacity),
+            current_load=kwds.get('current_load', 0),
+            downed=kwds.get('downed', 0),
+            backoff=kwds.get('backoff', 0),
+        )
+        res.close()
 
     def get_best_node(self, service):
         """Returns the 'least loaded' node currently available, increments the
@@ -192,7 +303,7 @@ class SQLMetadata(object):
         """
         nodes = self._get_nodes_table(service)
 
-        where = [nodes.c.service == service,
+        where = [nodes.c.service == self._get_service_id(service),
                  nodes.c.available > 0,
                  nodes.c.capacity > nodes.c.current_load,
                  nodes.c.downed == 0]
@@ -221,72 +332,11 @@ class SQLMetadata(object):
 
         return node
 
-    def _get_metadata_table(self, service):
-        return self.metadata
+    def _get_services_table(self, service):
+        return self.services
 
     def _get_nodes_table(self, service):
         return self.nodes
 
-    def _get_user_nodes_table(self, service):
-        return self.user_nodes
-
-    def set_metadata(self, service, name, value, needs_acceptance=False):
-        def _insert():
-            self._safe_execute(_INSERT_METADATA, service=service, name=name,
-                               value=value, needs_acceptance=needs_acceptance,
-                               close=True)
-
-        def _update():
-
-            where = [metadata.c.service == service, metadata.c.name == name]
-            where = and_(*where)
-
-            fields = {'value': value, 'needs_acceptance': needs_acceptance}
-            query = update(metadata, where, fields)
-            self._safe_execute(query, close=True)
-
-        # first do a request to check if the metadata record exists or not
-        metadata = self._get_metadata_table(service)
-        where = [metadata.c.service == service, metadata.c.name == name]
-        query = select([metadata.c.value]).where(and_(*where))
-        res = self._safe_execute(query, close=True)
-        if res.fetchone() is None:
-            return _insert()
-        else:
-            return _update()
-
-    def get_metadata(self, service, name=None, needs_acceptance=None):
-        metadata = self._get_metadata_table(service)
-        where = [metadata.c.service == service]
-
-        if name is not None:
-            where.append(metadata.c.name == name)
-
-        if needs_acceptance is not None:
-            where.append(metadata.c.needs_acceptance == needs_acceptance)
-
-        fields = [metadata.c.name, metadata.c.value,
-                  metadata.c.needs_acceptance]
-
-        query = select(fields).where(and_(*where))
-        res = self._safe_execute(query)
-
-        return res.fetchall()
-
-    def set_accepted_conditions_flag(self, service, value, email=None):
-        """Update the 'conditions accepted' flag for a service.
-
-        If email is set to None, update the flag for all the users of this
-        service.
-        """
-        user_nodes = self._get_user_nodes_table(service)
-
-        where = [user_nodes.c.service == service, ]
-        if email is not None:
-            where.append(user_nodes.c.email == email)
-
-        where = and_(*where)
-
-        fields = {'accepted_conditions': value}
-        query = update(user_nodes, where, fields)
-        self._safe_execute(query, close=True)
+    def _get_users_table(self, service):
+        return self.users

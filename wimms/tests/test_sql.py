@@ -3,92 +3,141 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 from unittest2 import TestCase
 import os
+import uuid
+from mozsvc.exceptions import BackendError
 from wimms.sql import SQLMetadata
 
 
-class TestSQLDB(TestCase):
+TEMP_ID = uuid.uuid4().hex
 
-    _SQLURI = os.environ.get('WIMMS_SQLURI', 'sqlite:////tmp/wimms')
+
+class NodeAssignmentTests(object):
+
+    backend = None  # subclasses must define this on the instance
 
     def setUp(self):
+        super(NodeAssignmentTests, self).setUp()
+        self.backend.add_service('sync-1.0', '{node}/1.0/{uid}')
+        self.backend.add_service('sync-1.5', '{node}/1.5/{uid}')
+        self.backend.add_service('queuey-1.0', '{node}/{service}/{uid}')
+        self.backend.add_node('sync-1.0', 'https://phx12', 100)
+
+    def test_node_allocation(self):
+        user = self.backend.get_user("sync-1.0", "tarek@mozilla.com")
+        self.assertEquals(user, None)
+
+        user = self.backend.create_user("sync-1.0", "tarek@mozilla.com")
+        wanted = 'https://phx12'
+        self.assertEqual(user['node'], wanted)
+
+        user = self.backend.get_user("sync-1.0", "tarek@mozilla.com")
+        self.assertEqual(user['node'], wanted)
+
+    def test_update_generation_number(self):
+        user = self.backend.create_user("sync-1.0", "tarek@mozilla.com")
+        self.assertEqual(user['generation'], 0)
+        self.assertEqual(user['client_state'], '')
+        orig_uid = user['uid']
+        orig_node = user['node']
+
+        # Changing generation should leave other properties unchanged.
+        self.backend.update_user("sync-1.0", user, generation=42)
+        self.assertEqual(user['uid'], orig_uid)
+        self.assertEqual(user['node'], orig_node)
+        self.assertEqual(user['generation'], 42)
+        self.assertEqual(user['client_state'], '')
+
+        user = self.backend.get_user("sync-1.0", "tarek@mozilla.com")
+        self.assertEqual(user['uid'], orig_uid)
+        self.assertEqual(user['node'], orig_node)
+        self.assertEqual(user['generation'], 42)
+        self.assertEqual(user['client_state'], '')
+
+        # It's not possible to move generation number backwards.
+        self.backend.update_user("sync-1.0", user, generation=17)
+        self.assertEqual(user['uid'], orig_uid)
+        self.assertEqual(user['node'], orig_node)
+        self.assertEqual(user['generation'], 42)
+        self.assertEqual(user['client_state'], '')
+
+        user = self.backend.get_user("sync-1.0", "tarek@mozilla.com")
+        self.assertEqual(user['uid'], orig_uid)
+        self.assertEqual(user['node'], orig_node)
+        self.assertEqual(user['generation'], 42)
+        self.assertEqual(user['client_state'], '')
+
+    def test_update_client_state(self):
+        user = self.backend.create_user("sync-1.0", "tarek@mozilla.com")
+        self.assertEqual(user['generation'], 0)
+        self.assertEqual(user['client_state'], '')
+        self.assertEqual(set(user['old_client_states']), set(()))
+        seen_uids = set((user['uid'],))
+        orig_node = user['node']
+
+        # Changing client-state allocates a new userid.
+        self.backend.update_user("sync-1.0", user, client_state="aaa")
+        self.assertTrue(user['uid'] not in seen_uids)
+        self.assertEqual(user['node'], orig_node)
+        self.assertEqual(user['generation'], 0)
+        self.assertEqual(user['client_state'], 'aaa')
+        self.assertEqual(set(user['old_client_states']), set(("",)))
+
+        user = self.backend.get_user("sync-1.0", "tarek@mozilla.com")
+        self.assertTrue(user['uid'] not in seen_uids)
+        self.assertEqual(user['node'], orig_node)
+        self.assertEqual(user['generation'], 0)
+        self.assertEqual(user['client_state'], 'aaa')
+        self.assertEqual(set(user['old_client_states']), set(("",)))
+
+        seen_uids.add(user['uid'])
+
+        # It's possible to change client-state and generation at once.
+        self.backend.update_user("sync-1.0", user,
+                                 client_state="bbb", generation=12)
+        self.assertTrue(user['uid'] not in seen_uids)
+        self.assertEqual(user['node'], orig_node)
+        self.assertEqual(user['generation'], 12)
+        self.assertEqual(user['client_state'], 'bbb')
+        self.assertEqual(set(user['old_client_states']), set(("", "aaa")))
+
+        user = self.backend.get_user("sync-1.0", "tarek@mozilla.com")
+        self.assertTrue(user['uid'] not in seen_uids)
+        self.assertEqual(user['node'], orig_node)
+        self.assertEqual(user['generation'], 12)
+        self.assertEqual(user['client_state'], 'bbb')
+        self.assertEqual(set(user['old_client_states']), set(("", "aaa")))
+
+        # You can't got back to an old client_state.
+        orig_uid = user['uid']
+        with self.assertRaises(BackendError):
+            self.backend.update_user("sync-1.0", user, client_state="aaa")
+
+        user = self.backend.get_user("sync-1.0", "tarek@mozilla.com")
+        self.assertEqual(user['uid'], orig_uid)
+        self.assertEqual(user['node'], orig_node)
+        self.assertEqual(user['generation'], 12)
+        self.assertEqual(user['client_state'], 'bbb')
+        self.assertEqual(set(user['old_client_states']), set(("", "aaa")))
+
+
+class TestSQLDB(NodeAssignmentTests, TestCase):
+
+    _SQLURI = os.environ.get('WIMMS_SQLURI', 'sqlite:////tmp/wimms.' + TEMP_ID)
+
+    def setUp(self):
+        self.backend = SQLMetadata(self._SQLURI, create_tables=True)
         super(TestSQLDB, self).setUp()
 
-        self.backend = SQLMetadata(self._SQLURI, create_tables=True)
-
-        # adding a node with 100 slots
-        self.backend._safe_execute(
-              """insert into nodes (`id`, `node`, `service`, `available`,
-                    `capacity`, `current_load`, `downed`, `backoff`)
-                values (1, "https://phx12", "sync-1.0", 100, 100, 0, 0, 0)""")
-
-        self._sqlite = self.backend._engine.driver == 'pysqlite'
-
     def tearDown(self):
-        if self._sqlite:
+        super(TestSQLDB, self).tearDown()
+        if self.backend._engine.driver == 'pysqlite':
             filename = self.backend.sqluri.split('sqlite://')[-1]
             if os.path.exists(filename):
                 os.remove(filename)
         else:
+            self.backend._safe_execute('drop table services;')
             self.backend._safe_execute('drop table nodes;')
-            self.backend._safe_execute('drop table user_nodes;')
-            self.backend._safe_execute('drop table metadata;')
-
-    def test_get_node(self):
-        unassigned = None, None, None
-        self.assertEquals(unassigned,
-                  self.backend.get_node("tarek@mozilla.com", "sync-1.0"))
-
-        res = self.backend.allocate_node("tarek@mozilla.com", "sync-1.0")
-        wanted = 'https://phx12'
-        self.assertEqual(res[1], wanted)
-
-        _, node, _ = self.backend.get_node("tarek@mozilla.com", "sync-1.0")
-        self.assertEqual(wanted, node)
-
-        # if we have a node assigned but the terms of services aren't set to
-        # true we should return them.
-        self.backend.set_metadata('sync-1.0', 'terms-of-service',
-                'http://tos', needs_acceptance=True)
-        self.backend.set_accepted_conditions_flag('sync-1.0', False)
-
-        _, _, to_accept = self.backend.get_node('tarek@mozilla.com',
-                                                'sync-1.0')
-        self.assertIn('http://tos', to_accept)
-
-        # if we're not assigned to a node, then we should return the terms of
-        # service
-        _, _, to_accept = self.backend.get_node('alexis@mozilla.com',
-                                                'sync-1.0')
-        self.assertIn('http://tos', to_accept)
-
-    def test_metadata(self):
-        metadata = (u'terms-of-service', u'http://tos', False)
-        self.backend.set_metadata('sync-1.0', 'terms-of-service', metadata[1])
-        self.assertIn(metadata,
-                  self.backend.get_metadata('sync-1.0', 'terms-of-service'))
-
-        metadata = (u'terms-of-service', u'http://another', False)
-        self.backend.set_metadata('sync-1.0', 'terms-of-service', metadata[1])
-        self.assertIn(metadata,
-                  self.backend.get_metadata('sync-1.0', 'terms-of-service'))
-
-        self.backend.set_metadata('sync-1.0', 'terms-of-service',
-                'http://yet-another', needs_acceptance=True)
-        self.assertIn(('terms-of-service', 'http://yet-another', True),
-            self.backend.get_metadata('sync-1.0', needs_acceptance=True))
-
-    def test_update_metadata(self):
-        tos_url = 'http://tos'
-        self.backend.set_metadata('sync-1.0', 'terms-of-service', tos_url,
-                needs_acceptance=True)
-        self.backend.allocate_node('alexis@mozilla.com', 'sync-1.0')
-        self.backend.allocate_node('tarek@mozilla.com', 'sync-1.0')
-
-        self.backend.set_accepted_conditions_flag('sync-1.0', False,
-                                                  'alexis@mozilla.com')
-        _, _, to_accept = self.backend.get_node('alexis@mozilla.com',
-                                                'sync-1.0')
-        self.assertIn(tos_url, to_accept)
+            self.backend._safe_execute('drop table users;')
 
 
 if os.environ.get('WIMMS_MYSQLURI', None) is not None:
