@@ -4,6 +4,7 @@
 from unittest2 import TestCase
 import os
 import uuid
+from mozsvc.exceptions import BackendError
 from wimms.sql import SQLMetadata
 
 
@@ -108,7 +109,10 @@ class NodeAssignmentTests(object):
 
         # You can't got back to an old client_state.
         orig_uid = user['uid']
-        self.backend.update_user("sync-1.0", user, client_state="aaa")
+        with self.assertRaises(BackendError):
+            self.backend.update_user("sync-1.0", user, client_state="aaa")
+       
+        user = self.backend.get_user("sync-1.0", "tarek@mozilla.com")
         self.assertEqual(user['uid'], orig_uid)
         self.assertEqual(user['node'], orig_node)
         self.assertEqual(user['generation'], 12)

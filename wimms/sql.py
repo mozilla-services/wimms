@@ -193,7 +193,7 @@ class SQLMetadata(object):
             }
 
     def update_user(self, service, user, generation=None, client_state=None):
-        if client_state is None or client_state in user['old_client_states']:
+        if client_state is None:
             # uid can stay the same, just update the generation number.
             if generation is not None:
                 params = {
@@ -205,6 +205,11 @@ class SQLMetadata(object):
                 res.close()
                 user['generation'] = max(generation, user['generation'])
         else:
+            # reject previously-seen client-state strings.
+            if client_state == user['client_state']:
+                raise BackendError('previously seen client-state string')
+            if client_state in user['old_client_states']:
+                raise BackendError('previously seen client-state string')
             # need to create a new record for new client_state.
             if generation is not None:
                 generation = max(user['generation'], generation)
