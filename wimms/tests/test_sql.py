@@ -111,7 +111,7 @@ class NodeAssignmentTests(object):
         orig_uid = user['uid']
         with self.assertRaises(BackendError):
             self.backend.update_user("sync-1.0", user, client_state="aaa")
-       
+
         user = self.backend.get_user("sync-1.0", "tarek@mozilla.com")
         self.assertEqual(user['uid'], orig_uid)
         self.assertEqual(user['node'], orig_node)

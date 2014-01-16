@@ -34,7 +34,7 @@ def get_cls(name, base_cls):
 
 
 class _UsersBase(object):
-    """This table lists all the users associated to a service.
+    """This table associates email addresses with services via integer uids.
 
     A user is uniquely identified by their email.  For each service they have
     a uid, an allocated node, and last-seen generation and client-state values.

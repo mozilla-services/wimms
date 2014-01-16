@@ -5,7 +5,7 @@
 Service Metadata Database.
 
 For each available service, we maintain a list of user accounts and their
-associated uid, node-assignemtn and metadata.  We also have a list of nodes
+associated uid, node-assignment and metadata.  We also have a list of nodes
 with their load, capacity etc
 """
 import time
