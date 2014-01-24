@@ -47,8 +47,8 @@ class _UsersBase(object):
     node = Column(String(64), nullable=False)
     generation = Column(Integer(), nullable=False)
     client_state = Column(String(32), nullable=False)
-    created_at = Column(Integer(), nullable=False)
-    replaced_at = Column(Integer(), nullable=True)
+    created_at = Column(BigInteger(), nullable=False)
+    replaced_at = Column(BigInteger(), nullable=True)
 
     @declared_attr
     def __table_args__(cls):
