@@ -16,7 +16,7 @@ from sqlalchemy.sql import select, update, and_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
-from sqlalchemy.sql import text as sqltext
+from sqlalchemy.sql import text as sqltext, func as sqlfunc
 from sqlalchemy.exc import OperationalError, TimeoutError, IntegrityError
 
 from wimms import logger
@@ -106,7 +106,8 @@ class SQLMetadata(object):
 
         self._engine.echo = kw.get('echo', False)
 
-        if self._engine.driver == 'pysqlite':
+        self._is_sqlite = (self._engine.driver == 'pysqlite')
+        if self._is_sqlite:
             from wimms.sqliteschemas import get_cls  # NOQA
         else:
             from wimms.schemas import get_cls  # NOQA
@@ -302,15 +303,26 @@ class SQLMetadata(object):
         active count on that node, and decrements the slots currently available
         """
         nodes = self._get_nodes_table(service)
+        service = self._get_service_id(service)
 
-        where = [nodes.c.service == self._get_service_id(service),
+        where = [nodes.c.service == service,
                  nodes.c.available > 0,
                  nodes.c.capacity > nodes.c.current_load,
                  nodes.c.downed == 0]
 
         query = select([nodes]).where(and_(*where))
-        query = query.order_by(nodes.c.current_load /
-                               nodes.c.capacity).limit(1)
+
+        if self._is_sqlite:
+            # sqlite doesn't have the 'log' funtion, and requires
+            # coercion to a float for the sorting to work.
+            query = query.order_by(nodes.c.current_load * 1.0 /
+                                   nodes.c.capacity)
+        else:
+            # using log() increases floating-point precision on mysql
+            # and thus makes the sorting more accurate.
+            query = query.order_by(sqlfunc.log(nodes.c.current_load) /
+                                   sqlfunc.log(nodes.c.capacity))
+        query = query.limit(1)
         res = self._safe_execute(query)
         one = res.fetchone()
         if one is None:

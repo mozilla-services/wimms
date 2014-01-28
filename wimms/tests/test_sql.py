@@ -33,6 +33,12 @@ class NodeAssignmentTests(object):
         user = self.backend.get_user("sync-1.0", "tarek@mozilla.com")
         self.assertEqual(user['node'], wanted)
 
+    def test_allocation_to_least_loaded_node(self):
+        self.backend.add_node('sync-1.0', 'https://phx13', 100)
+        user1 = self.backend.create_user("sync-1.0", "test1@mozilla.com")
+        user2 = self.backend.create_user("sync-1.0", "test2@mozilla.com")
+        self.assertNotEqual(user1['node'], user2['node'])
+
     def test_update_generation_number(self):
         user = self.backend.create_user("sync-1.0", "tarek@mozilla.com")
         self.assertEqual(user['generation'], 0)

@@ -59,7 +59,8 @@ class ShardedSQLMetadata(SQLMetadata):
 
             engine.echo = kw.get('echo', False)
 
-            if engine.driver == 'pysqlite':
+            self._is_sqlite = (engine.driver == 'pysqlite')
+            if self._is_sqlite:
                 from wimms.sqliteschemas import get_cls  # NOQA
             else:
                 from wimms.schemas import get_cls   # NOQA
