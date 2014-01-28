@@ -273,22 +273,22 @@ class SQLMetadata(object):
 
     def add_service(self, service, pattern, **kwds):
         """Add definition for a new service."""
-        res = self._safe_execute("""
+        res = self._safe_execute(sqltext("""
           insert into services (service, pattern)
           values (:servicename, :pattern)
-        """, servicename=service, pattern=pattern, **kwds)
+        """), servicename=service, pattern=pattern, **kwds)
         res.close()
         return res.lastrowid
 
     def add_node(self, service, node, capacity, **kwds):
         """Add definition for a new node."""
-        res = self._safe_execute(
+        res = self._safe_execute(sqltext(
             """
-            insert into nodes (id, service, node, available, capacity,
+            insert into nodes (service, node, available, capacity,
                                current_load, downed, backoff)
-            values (NULL, :service, :node, :available, :capacity,
+            values (:service, :node, :available, :capacity,
                     :current_load, :downed, :backoff)
-            """,
+            """),
             service=service, node=node, capacity=capacity,
             available=kwds.get('available', capacity),
             current_load=kwds.get('current_load', 0),
