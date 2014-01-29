@@ -45,7 +45,7 @@ class _UsersBase(object):
     service = Column(Integer(), nullable=False)
     email = Column(String(255), nullable=False)
     node = Column(String(64), nullable=False)
-    generation = Column(Integer(), nullable=False)
+    generation = Column(BigInteger(), nullable=False)
     client_state = Column(String(32), nullable=False)
     created_at = Column(BigInteger(), nullable=False)
     replaced_at = Column(BigInteger(), nullable=True)
