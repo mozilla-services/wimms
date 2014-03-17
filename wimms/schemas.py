@@ -53,12 +53,15 @@ class _UsersBase(object):
     @declared_attr
     def __table_args__(cls):
         return (
-            # The only lookup we do is to slurp in all records
-            # for a (service, email) pair, sorted by creation time.
+            # Index used to slurp in all records for a (service, email)
+            # pair, sorted by creation time.
             Index('lookup_idx', 'email', 'service', 'created_at'),
-            # Prevent duplicate records for a single client_state value.
+            # Index to prevent duplicate records for a single
+            # client_state value.
             Index('clientstate_idx', 'email', 'service', 'client_state',
                   unique=True),
+            # Index used for purging user_records that have been replaced.
+            Index('replaced_at_idx', 'service', 'replaced_at'),
             {'mysql_engine': 'InnoDB', 'mysql_charset': 'utf8'}
         )
 
