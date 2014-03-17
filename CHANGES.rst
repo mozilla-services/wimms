@@ -4,7 +4,7 @@ CHANGES
 XXXX - 0.4
 ----------
 
-- Removed "serice acceptance" flags and the related metadata table.
+- Removed "service acceptance" flags and the related metadata table.
 - Added tracking of optional "generation number" for each user account,
   which can be used to more quickly detect password change events.
 - Added tracking of optional "client state" string for each user account,
