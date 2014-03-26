@@ -4,6 +4,7 @@
 from unittest2 import TestCase
 import os
 import uuid
+import time
 from mozsvc.exceptions import BackendError
 from wimms.sql import SQLMetadata
 
@@ -124,6 +125,54 @@ class NodeAssignmentTests(object):
         self.assertEqual(user['generation'], 12)
         self.assertEqual(user['client_state'], 'bbb')
         self.assertEqual(set(user['old_client_states']), set(("", "aaa")))
+
+    def test_user_retirement(self):
+        self.backend.create_user("sync-1.0", "test@mozilla.com")
+        user1 = self.backend.get_user("sync-1.0", "test@mozilla.com")
+        self.backend.retire_user("test@mozilla.com")
+        user2 = self.backend.get_user("sync-1.0", "test@mozilla.com")
+        self.assertTrue(user2["generation"] > user1["generation"])
+
+    def test_cleanup_of_old_records(self):
+        service = "sync-1.0"
+        # Create 6 user records for the first user.
+        # Do a sleep halfway through so we can test use of grace period.
+        email1 = "test1@mozilla.com"
+        user1 = self.backend.create_user(service, email1)
+        self.backend.update_user(service, user1, client_state="a")
+        self.backend.update_user(service, user1, client_state="b")
+        self.backend.update_user(service, user1, client_state="c")
+        break_time = time.time()
+        time.sleep(0.1)
+        self.backend.update_user(service, user1, client_state="d")
+        self.backend.update_user(service, user1, client_state="e")
+        records = list(self.backend.get_user_records(service, email1))
+        self.assertEqual(len(records), 6)
+        # Create 3 user records for the second user.
+        email2 = "test2@mozilla.com"
+        user2 = self.backend.create_user(service, email2)
+        self.backend.update_user(service, user2, client_state="a")
+        self.backend.update_user(service, user2, client_state="b")
+        records = list(self.backend.get_user_records(service, email2))
+        self.assertEqual(len(records), 3)
+        # That should be a total of 7 old records.
+        old_records = list(self.backend.get_old_user_records(service, 0))
+        self.assertEqual(len(old_records), 7)
+        # The 'limit' parameter should be respected.
+        old_records = list(self.backend.get_old_user_records(service, 0, 2))
+        self.assertEqual(len(old_records), 2)
+        # The default grace period is too big to pick them up.
+        old_records = list(self.backend.get_old_user_records(service))
+        self.assertEqual(len(old_records), 0)
+        # The grace period can select a subset of the records.
+        grace = time.time() - break_time
+        old_records = list(self.backend.get_old_user_records(service, grace))
+        self.assertEqual(len(old_records), 3)
+        # Old records can be successfully deleted:
+        for record in old_records:
+            self.backend.delete_user_record(service, record.uid)
+        old_records = list(self.backend.get_old_user_records(service, 0))
+        self.assertEqual(len(old_records), 4)
 
 
 class TestSQLDB(NodeAssignmentTests, TestCase):

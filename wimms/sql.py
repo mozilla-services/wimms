@@ -77,6 +77,60 @@ where
 """)
 
 
+# Mark all records for the user as replaced,
+# and set a large generation number to block future logins.
+_RETIRE_USER_RECORDS = sqltext("""\
+update
+    users
+set
+    replaced_at = :timestamp,
+    generation = 9223372036854775807
+where
+    email = :email
+    and replaced_at is null
+""")
+
+
+_GET_OLD_USER_RECORDS_FOR_SERVICE = sqltext("""\
+select
+    uid, node
+from
+    users
+where
+    service = :service
+and
+    replaced_at is not null and replaced_at < :timestamp
+order by
+    replaced_at desc, uid desc
+limit
+    :limit
+""")
+
+
+_GET_ALL_USER_RECORDS_FOR_SERVICE = sqltext("""\
+select
+    uid, node
+from
+    users
+where
+    email = :email
+and
+    service = :service
+order by
+    created_at asc, uid desc
+""")
+
+
+_DELETE_USER_RECORD = sqltext("""\
+delete from
+    users
+where
+    service = :service
+and
+    uid = :uid
+""")
+
+
 WRITEABLE_FIELDS = ['available', 'current_load', 'capacity', 'downed',
                     'backoff']
 
@@ -242,6 +296,53 @@ class SQLMetadata(object):
             }
             res = self._safe_execute(_REPLACE_USER_RECORDS, **params)
             res.close()
+
+    def retire_user(self, email, engine=None):
+        now = get_timestamp()
+        params = {
+            'email': email, 'timestamp': now
+        }
+        # Pass through explicit engine to help with sharded implementation,
+        # since we can't shard by service name here.
+        res = self._safe_execute(_RETIRE_USER_RECORDS, engine=engine, **params)
+        res.close()
+
+    #
+    # Methods for low-level user record management.
+    #
+
+    def get_user_records(self, service, email):
+        """Get all the user's records for a service, including the old ones."""
+        params = {'service': service, 'email': email}
+        res = self._safe_execute(_GET_ALL_USER_RECORDS_FOR_SERVICE, **params)
+        try:
+            for row in res:
+                yield row
+        finally:
+            res.close()
+
+    def get_old_user_records(self, service, grace_period=-1, limit=100):
+        """Get user records that were replaced outside the grace period."""
+        if grace_period < 0:
+            grace_period = 60 * 60 * 24 * 7  # one week, in seconds
+        grace_period = int(grace_period * 1000)  # convert seconds -> millis
+        params = {
+            "service": service,
+            "timestamp": get_timestamp() - grace_period,
+            "limit": limit,
+        }
+        res = self._safe_execute(_GET_OLD_USER_RECORDS_FOR_SERVICE, **params)
+        try:
+            for row in res:
+                yield row
+        finally:
+            res.close()
+
+    def delete_user_record(self, service, uid):
+        """Delete the user record with the given uid."""
+        params = {'service': service, 'uid': uid}
+        res = self._safe_execute(_DELETE_USER_RECORD, **params)
+        res.close()
 
     #
     # Nodes management

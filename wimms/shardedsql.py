@@ -83,7 +83,6 @@ class ShardedSQLMetadata(SQLMetadata):
     def _get_engine(self, service=None):
         if service is None:
             raise NotImplementedError()
-            return self._dbs.values()[0][ENGINE_INDEX]
         return self._dbs[self._dbkey(service)][ENGINE_INDEX]
 
     def _get_table(self, service, index):
@@ -123,3 +122,9 @@ class ShardedSQLMetadata(SQLMetadata):
         engine = self._get_engine(service)
         return super(ShardedSQLMetadata, self).add_service(service, pattern,
                                                            engine=engine)
+
+    def retire_user(self, email):
+        for service, elements in self._dbs.items():
+            engine = elements[0]
+            super(ShardedSQLMetadata, self).retire_user(email, engine=engine)
+

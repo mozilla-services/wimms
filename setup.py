@@ -4,6 +4,15 @@
 import os
 from setuptools import setup, find_packages
 
+# This works around some strangeness to do with 
+# interpreter shutdown and the multiprocessing module,
+# e.g. as described in http://bugs.python.org/issue15881
+try:
+    import multiprocessing
+except ImportError:
+    pass
+
+
 here = os.path.abspath(os.path.dirname(__file__))
 
 with open(os.path.join(here, 'README.rst')) as f:
