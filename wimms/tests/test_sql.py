@@ -6,7 +6,7 @@ import os
 import uuid
 import time
 from mozsvc.exceptions import BackendError
-from wimms.sql import SQLMetadata, MAX_GENERATION
+from wimms.sql import SQLMetadata, MAX_GENERATION, get_timestamp
 
 
 TEMP_ID = uuid.uuid4().hex
@@ -193,6 +193,22 @@ class NodeAssignmentTests(object):
         self.assertEqual(user2["uid"], user1["uid"])
         self.assertEqual(user2["generation"], MAX_GENERATION)
         self.assertEqual(user2["client_state"], user2["client_state"])
+
+    def test_recovery_from_racy_record_creation(self):
+        timestamp = get_timestamp()
+        # Simulate race for forcing creation of two rows with same timestamp.
+        user1 = self.backend.create_user("sync-1.0", "test@mozilla.com",
+                                         timestamp=timestamp)
+        user2 = self.backend.create_user("sync-1.0", "test@mozilla.com",
+                                         timestamp=timestamp)
+        self.assertNotEqual(user1["uid"], user2["uid"])
+        # Neither is marked replaced initially.
+        old_records = list(self.backend.get_old_user_records("sync-1.0", 0))
+        self.assertEqual(len(old_records), 0)
+        # Reading current details will detect the problem and fix it.
+        self.backend.get_user("sync-1.0", "test@mozilla.com")
+        old_records = list(self.backend.get_old_user_records("sync-1.0", 0))
+        self.assertEqual(len(old_records), 1)
 
 
 class TestSQLDB(NodeAssignmentTests, TestCase):

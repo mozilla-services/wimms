@@ -37,7 +37,7 @@ _Base = declarative_base()
 
 _GET_USER_RECORDS = sqltext("""\
 select
-    uid, node, generation, client_state, replaced_at
+    uid, node, generation, client_state, created_at, replaced_at
 from
     users
 where
@@ -123,6 +123,18 @@ and
     service = :service
 order by
     created_at asc, uid desc
+""")
+
+
+_REPLACE_USER_RECORD = sqltext("""\
+update
+    users
+set
+    replaced_at = :timestamp
+where
+    service = :service
+and
+    uid = :uid
 """)
 
 
@@ -234,16 +246,24 @@ class SQLMetadata(object):
                 # Colect any previously-seen client-state values.
                 if old_row.client_state != user['client_state']:
                     user['old_client_states'][old_row.client_state] = True
+                # Make sure each old row is marked as replaced.
+                # They might not be, due to races in row creation.
+                if old_row.replaced_at is None:
+                    timestamp = cur_row.created_at
+                    self.replace_user_record(service, old_row.uid, timestamp)
             return user
         finally:
             res.close()
 
-    def create_user(self, service, email, generation=0, client_state=''):
+    def create_user(self, service, email, generation=0, client_state='',
+                    timestamp=None):
+        if timestamp is None:
+            timestamp = get_timestamp()
         node = self.get_best_node(service)
         params = {
             'service': service, 'email': email, 'node': node,
             'generation': generation, 'client_state': client_state,
-            'timestamp': get_timestamp()
+            'timestamp': timestamp
         }
         res = self._safe_execute(_CREATE_USER_RECORD, **params)
         res.close()
@@ -346,6 +366,16 @@ class SQLMetadata(object):
             'service': service, 'email': email, 'timestamp': timestamp
         }
         res = self._safe_execute(_REPLACE_USER_RECORDS, **params)
+        res.close()
+
+    def replace_user_record(self, service, uid, timestamp=None):
+        """Mark an existing service record as replaced."""
+        if timestamp is None:
+            timestamp = get_timestamp()
+        params = {
+            'service': service, 'uid': uid, 'timestamp': timestamp
+        }
+        res = self._safe_execute(_REPLACE_USER_RECORD, **params)
         res.close()
 
     def delete_user_record(self, service, uid):
