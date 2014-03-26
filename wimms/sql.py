@@ -219,7 +219,8 @@ class SQLMetadata(object):
             # Any subsequent rows are due to old client-state values.
             row = res.fetchone()
             while row is not None:
-                user['old_client_states'][row.client_state] = True
+                if row.client_state != user['client_state']:
+                    user['old_client_states'][row.client_state] = True
                 row = res.fetchone()
             return user
         finally:
@@ -232,20 +233,16 @@ class SQLMetadata(object):
             'generation': generation, 'client_state': client_state,
             'timestamp': get_timestamp()
         }
-        try:
-            res = self._safe_execute(_CREATE_USER_RECORD, **params)
-        except IntegrityError:
-            return self.get_user(service, email)
-        else:
-            res.close()
-            return {
-                'email': email,
-                'uid': res.lastrowid,
-                'node': node,
-                'generation': generation,
-                'client_state': client_state,
-                'old_client_states': {}
-            }
+        res = self._safe_execute(_CREATE_USER_RECORD, **params)
+        res.close()
+        return {
+            'email': email,
+            'uid': res.lastrowid,
+            'node': node,
+            'generation': generation,
+            'client_state': client_state,
+            'old_client_states': {}
+        }
 
     def update_user(self, service, user, generation=None, client_state=None):
         if client_state is None:
@@ -276,17 +273,12 @@ class SQLMetadata(object):
                 'node': user['node'], 'timestamp': now,
                 'generation': generation, 'client_state': client_state
             }
-            try:
-                res = self._safe_execute(_CREATE_USER_RECORD, **params)
-            except IntegrityError:
-                user.update(self.get_user(service, user['email']))
-            else:
-                self.get_user(service, user['email'])
-                user['uid'] = res.lastrowid
-                user['generation'] = generation
-                user['old_client_states'][user['client_state']] = True
-                user['client_state'] = client_state
-                res.close()
+            res = self._safe_execute(_CREATE_USER_RECORD, **params)
+            res.close()
+            user['uid'] = res.lastrowid
+            user['generation'] = generation
+            user['old_client_states'][user['client_state']] = True
+            user['client_state'] = client_state
             # mark old records as having been replaced.
             # if we crash here, they are unmarked and we may fail to
             # garbage collect them for a while, but the active state
