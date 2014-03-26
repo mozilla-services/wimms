@@ -127,4 +127,3 @@ class ShardedSQLMetadata(SQLMetadata):
         for service, elements in self._dbs.items():
             engine = elements[0]
             super(ShardedSQLMetadata, self).retire_user(email, engine=engine)
-

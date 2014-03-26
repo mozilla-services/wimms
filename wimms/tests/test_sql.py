@@ -6,7 +6,7 @@ import os
 import uuid
 import time
 from mozsvc.exceptions import BackendError
-from wimms.sql import SQLMetadata
+from wimms.sql import SQLMetadata, MAX_GENERATION
 
 
 TEMP_ID = uuid.uuid4().hex
@@ -173,6 +173,26 @@ class NodeAssignmentTests(object):
             self.backend.delete_user_record(service, record.uid)
         old_records = list(self.backend.get_old_user_records(service, 0))
         self.assertEqual(len(old_records), 4)
+
+    def test_node_reassignment_when_records_are_replaced(self):
+        self.backend.create_user("sync-1.0", "test@mozilla.com",
+                                 generation=42, client_state="aaa")
+        user1 = self.backend.get_user("sync-1.0", "test@mozilla.com")
+        self.backend.replace_user_records("sync-1.0", "test@mozilla.com")
+        user2 = self.backend.get_user("sync-1.0", "test@mozilla.com")
+        self.assertNotEqual(user2["uid"], user1["uid"])
+        self.assertEqual(user2["generation"], user1["generation"])
+        self.assertEqual(user2["client_state"], user1["client_state"])
+
+    def test_node_reassignment_not_done_for_retired_users(self):
+        self.backend.create_user("sync-1.0", "test@mozilla.com",
+                                 generation=42, client_state="aaa")
+        user1 = self.backend.get_user("sync-1.0", "test@mozilla.com")
+        self.backend.retire_user("test@mozilla.com")
+        user2 = self.backend.get_user("sync-1.0", "test@mozilla.com")
+        self.assertEqual(user2["uid"], user1["uid"])
+        self.assertEqual(user2["generation"], MAX_GENERATION)
+        self.assertEqual(user2["client_state"], user2["client_state"])
 
 
 class TestSQLDB(NodeAssignmentTests, TestCase):
