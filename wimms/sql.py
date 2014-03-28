@@ -17,9 +17,14 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import text as sqltext, func as sqlfunc
-from sqlalchemy.exc import OperationalError, TimeoutError, IntegrityError
+from sqlalchemy.exc import OperationalError, TimeoutError
 
 from wimms import logger
+
+
+# The maximum possible generation number.
+# Used as a tombstone to mark users that have been "retired" from the db.
+MAX_GENERATION = 9223372036854775807
 
 
 def get_timestamp():
@@ -32,7 +37,7 @@ _Base = declarative_base()
 
 _GET_USER_RECORDS = sqltext("""\
 select
-    uid, node, generation, client_state
+    uid, node, generation, client_state, created_at, replaced_at
 from
     users
 where
@@ -84,7 +89,7 @@ update
     users
 set
     replaced_at = :timestamp,
-    generation = 9223372036854775807
+    generation = :generation
 where
     email = :email
     and replaced_at is null
@@ -118,6 +123,18 @@ and
     service = :service
 order by
     created_at asc, uid desc
+""")
+
+
+_REPLACE_USER_RECORD = sqltext("""\
+update
+    users
+set
+    replaced_at = :timestamp
+where
+    service = :service
+and
+    uid = :uid
 """)
 
 
@@ -204,48 +221,60 @@ class SQLMetadata(object):
         params = {'service': service, 'email': email}
         res = self._safe_execute(_GET_USER_RECORDS, **params)
         try:
-            row = res.fetchone()
-            if row is None:
-                return None
             # The first row is the most up-to-date user record.
+            # The rest give previously-seen client-state values.
+            cur_row = res.fetchone()
+            if cur_row is None:
+                return None
+            old_rows = res.fetchall()
             user = {
                 'email': email,
-                'uid': row.uid,
-                'node': row.node,
-                'generation': row.generation,
-                'client_state': row.client_state,
+                'uid': cur_row.uid,
+                'node': cur_row.node,
+                'generation': cur_row.generation,
+                'client_state': cur_row.client_state,
                 'old_client_states': {}
             }
-            # Any subsequent rows are due to old client-state values.
-            row = res.fetchone()
-            while row is not None:
-                user['old_client_states'][row.client_state] = True
-                row = res.fetchone()
+            # If the current row is marked as replaced, and they haven't
+            # been retired, then create them a new node assignment.
+            if cur_row.replaced_at is not None:
+                if cur_row.generation < MAX_GENERATION:
+                    user = self.create_user(service, email,
+                                            cur_row.generation,
+                                            cur_row.client_state)
+            for old_row in old_rows:
+                # Colect any previously-seen client-state values.
+                if old_row.client_state != user['client_state']:
+                    user['old_client_states'][old_row.client_state] = True
+                # Make sure each old row is marked as replaced.
+                # They might not be, due to races in row creation.
+                if old_row.replaced_at is None:
+                    timestamp = cur_row.created_at
+                    self.replace_user_record(service, old_row.uid, timestamp)
             return user
         finally:
             res.close()
 
-    def create_user(self, service, email, generation=0, client_state=''):
+    def create_user(self, service, email, generation=0, client_state='',
+                    timestamp=None):
+        if timestamp is None:
+            timestamp = get_timestamp()
         node = self.get_best_node(service)
         params = {
             'service': service, 'email': email, 'node': node,
             'generation': generation, 'client_state': client_state,
-            'timestamp': get_timestamp()
+            'timestamp': timestamp
         }
-        try:
-            res = self._safe_execute(_CREATE_USER_RECORD, **params)
-        except IntegrityError:
-            return self.get_user(service, email)
-        else:
-            res.close()
-            return {
-                'email': email,
-                'uid': res.lastrowid,
-                'node': node,
-                'generation': generation,
-                'client_state': client_state,
-                'old_client_states': {}
-            }
+        res = self._safe_execute(_CREATE_USER_RECORD, **params)
+        res.close()
+        return {
+            'email': email,
+            'uid': res.lastrowid,
+            'node': node,
+            'generation': generation,
+            'client_state': client_state,
+            'old_client_states': {}
+        }
 
     def update_user(self, service, user, generation=None, client_state=None):
         if client_state is None:
@@ -276,31 +305,22 @@ class SQLMetadata(object):
                 'node': user['node'], 'timestamp': now,
                 'generation': generation, 'client_state': client_state
             }
-            try:
-                res = self._safe_execute(_CREATE_USER_RECORD, **params)
-            except IntegrityError:
-                user.update(self.get_user(service, user['email']))
-            else:
-                self.get_user(service, user['email'])
-                user['uid'] = res.lastrowid
-                user['generation'] = generation
-                user['old_client_states'][user['client_state']] = True
-                user['client_state'] = client_state
-                res.close()
+            res = self._safe_execute(_CREATE_USER_RECORD, **params)
+            res.close()
+            user['uid'] = res.lastrowid
+            user['generation'] = generation
+            user['old_client_states'][user['client_state']] = True
+            user['client_state'] = client_state
             # mark old records as having been replaced.
             # if we crash here, they are unmarked and we may fail to
             # garbage collect them for a while, but the active state
             # will be undamaged.
-            params = {
-                'service': service, 'email': user['email'], 'timestamp': now
-            }
-            res = self._safe_execute(_REPLACE_USER_RECORDS, **params)
-            res.close()
+            self.replace_user_records(service, user['email'], now)
 
     def retire_user(self, email, engine=None):
         now = get_timestamp()
         params = {
-            'email': email, 'timestamp': now
+            'email': email, 'timestamp': now, 'generation': MAX_GENERATION
         }
         # Pass through explicit engine to help with sharded implementation,
         # since we can't shard by service name here.
@@ -337,6 +357,26 @@ class SQLMetadata(object):
                 yield row
         finally:
             res.close()
+
+    def replace_user_records(self, service, email, timestamp=None):
+        """Mark all existing service records for a user as replaced."""
+        if timestamp is None:
+            timestamp = get_timestamp()
+        params = {
+            'service': service, 'email': email, 'timestamp': timestamp
+        }
+        res = self._safe_execute(_REPLACE_USER_RECORDS, **params)
+        res.close()
+
+    def replace_user_record(self, service, uid, timestamp=None):
+        """Mark an existing service record as replaced."""
+        if timestamp is None:
+            timestamp = get_timestamp()
+        params = {
+            'service': service, 'uid': uid, 'timestamp': timestamp
+        }
+        res = self._safe_execute(_REPLACE_USER_RECORD, **params)
+        res.close()
 
     def delete_user_record(self, service, uid):
         """Delete the user record with the given uid."""
