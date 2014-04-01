@@ -210,6 +210,42 @@ class NodeAssignmentTests(object):
         old_records = list(self.backend.get_old_user_records("sync-1.0", 0))
         self.assertEqual(len(old_records), 1)
 
+    def test_that_race_recovery_respects_generation_number_monotonicity(self):
+        timestamp = get_timestamp()
+        # Simulate race between clients with different generation numbers,
+        # in which the out-of-date client gets a higher timestamp.
+        user1 = self.backend.create_user("sync-1.0", "test@mozilla.com",
+                                         generation=1, timestamp=timestamp)
+        user2 = self.backend.create_user("sync-1.0", "test@mozilla.com",
+                                         generation=2, timestamp=timestamp - 1)
+        self.assertNotEqual(user1["uid"], user2["uid"])
+        # Reading current details should promote the higher-generation one.
+        user = self.backend.get_user("sync-1.0", "test@mozilla.com")
+        self.assertEqual(user["generation"], 2)
+        self.assertEqual(user["uid"], user2["uid"])
+        # And the other record should get marked as replaced.
+        old_records = list(self.backend.get_old_user_records("sync-1.0", 0))
+        self.assertEqual(len(old_records), 1)
+
+    def test_that_race_recovery_respects_generation_after_reassignment(self):
+        timestamp = get_timestamp()
+        # Simulate race between clients with different generation numbers,
+        # in which the out-of-date client gets a higher timestamp.
+        user1 = self.backend.create_user("sync-1.0", "test@mozilla.com",
+                                         generation=1, timestamp=timestamp)
+        user2 = self.backend.create_user("sync-1.0", "test@mozilla.com",
+                                         generation=2, timestamp=timestamp - 1)
+        self.assertNotEqual(user1["uid"], user2["uid"])
+        # Force node re-assignment by marking all records as replaced.
+        self.backend.replace_user_records("sync-1.0", "test@mozilla.com",
+                                          timestamp=timestamp + 1)
+        # The next client to show up should get a new assignment, marked
+        # with the correct generation number.
+        user = self.backend.get_user("sync-1.0", "test@mozilla.com")
+        self.assertEqual(user["generation"], 2)
+        self.assertNotEqual(user["uid"], user1["uid"])
+        self.assertNotEqual(user["uid"], user2["uid"])
+
 
 class TestSQLDB(NodeAssignmentTests, TestCase):
 

@@ -221,12 +221,19 @@ class SQLMetadata(object):
         params = {'service': service, 'email': email}
         res = self._safe_execute(_GET_USER_RECORDS, **params)
         try:
+            # The query fetches rows ordered by created_at, but we want
+            # to ensure that they're ordered by (generation, created_at).
+            # This is almost always true, except for strange race conditions
+            # during row creation.  Sorting them is an easy way to enforce
+            # this without bloating the db index.
+            rows = res.fetchall()
+            rows.sort(key=lambda r: (r.generation, r.created_at), reverse=True)
+            if not rows:
+                return None
             # The first row is the most up-to-date user record.
             # The rest give previously-seen client-state values.
-            cur_row = res.fetchone()
-            if cur_row is None:
-                return None
-            old_rows = res.fetchall()
+            cur_row = rows[0]
+            old_rows = rows[1:]
             user = {
                 'email': email,
                 'uid': cur_row.uid,
