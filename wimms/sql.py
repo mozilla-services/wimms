@@ -446,6 +446,32 @@ class SQLMetadata(object):
         )
         res.close()
 
+    def remove_node(self, service, node, timestamp=None):
+        """Remove definition for a node."""
+        res = self._safe_execute(sqltext(
+            """
+            delete from nodes
+            where service=:service and node=:node
+            """),
+            service=service, node=node
+        )
+        res.close()
+        self.unassign_node(service, node, timestamp)
+
+    def unassign_node(self, service, node, timestamp=None):
+        """Clear any assignments to a node."""
+        if timestamp is None:
+            timestamp = get_timestamp()
+        res = self._safe_execute(sqltext(
+            """
+            update users
+            set replaced_at=:timestamp
+            where service=:service and node=:node
+            """),
+            service=service, node=node, timestamp=timestamp
+        )
+        res.close()
+
     def get_best_node(self, service):
         """Returns the 'least loaded' node currently available, increments the
         active count on that node, and decrements the slots currently available

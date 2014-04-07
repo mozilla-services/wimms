@@ -58,6 +58,8 @@ class _UsersBase(object):
             Index('lookup_idx', 'email', 'service', 'created_at'),
             # Index used for purging user_records that have been replaced.
             Index('replaced_at_idx', 'service', 'replaced_at'),
+            # Index used for looking up all assignments on a node.
+            Index('node_idx', 'service', 'node'),
             {'mysql_engine': 'InnoDB', 'mysql_charset': 'utf8'}
         )
 

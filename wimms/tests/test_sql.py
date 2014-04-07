@@ -5,6 +5,7 @@ from unittest2 import TestCase
 import os
 import uuid
 import time
+from collections import defaultdict
 from mozsvc.exceptions import BackendError
 from wimms.sql import SQLMetadata, MAX_GENERATION, get_timestamp
 
@@ -226,6 +227,39 @@ class NodeAssignmentTests(object):
         # And the other record should get marked as replaced.
         old_records = list(self.backend.get_old_user_records("sync-1.0", 0))
         self.assertEqual(len(old_records), 1)
+
+    def test_node_reassignment_and_removal(self):
+        NODE1 = "https://phx12"
+        NODE2 = "https://phx13"
+        # note that NODE1 is created by default for all tests.
+        self.backend.add_node("sync-1.0", NODE2, 100)
+        # Assign four users, we should get two on each node.
+        user1 = self.backend.create_user("sync-1.0", "test1@mozilla.com")
+        user2 = self.backend.create_user("sync-1.0", "test2@mozilla.com")
+        user3 = self.backend.create_user("sync-1.0", "test3@mozilla.com")
+        user4 = self.backend.create_user("sync-1.0", "test4@mozilla.com")
+        node_counts = defaultdict(lambda: 0)
+        for user in (user1, user2, user3, user4):
+            node_counts[user["node"]] += 1
+        self.assertEqual(node_counts[NODE1], 2)
+        self.assertEqual(node_counts[NODE2], 2)
+        # Clear the assignments for NODE1, and re-assign.
+        # The users previously on NODE1 should balance across both nodes,
+        # giving 1 on NODE1 and 3 on NODE2.
+        self.backend.unassign_node("sync-1.0", NODE1)
+        node_counts = defaultdict(lambda: 0)
+        for user in (user1, user2, user3, user4):
+            new_user = self.backend.get_user("sync-1.0", user["email"])
+            if user["node"] == NODE2:
+                self.assertEqual(new_user["node"], NODE2)
+            node_counts[new_user["node"]] += 1
+        self.assertEqual(node_counts[NODE1], 1)
+        self.assertEqual(node_counts[NODE2], 3)
+        # Remove NODE2.  Everyone should wind up on NODE1.
+        self.backend.remove_node("sync-1.0", NODE2)
+        for user in (user1, user2, user3, user4):
+            new_user = self.backend.get_user("sync-1.0", user["email"])
+            self.assertEqual(new_user["node"], NODE1)
 
     def test_that_race_recovery_respects_generation_after_reassignment(self):
         timestamp = get_timestamp()
