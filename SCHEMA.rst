@@ -21,7 +21,7 @@ Users
 =====
 
 Stored uniquely by e-mail address. Server is responsible for determining what
-node to store for a user during user creation. 
+node to store for a user during user creation.
 
 Multiple copies of the row may exist with differing client states if the user
 resets a password
@@ -33,6 +33,7 @@ Fields:
 - Node
 - Generation
   Highest timestamp of the browserid cert, based on issuing of cert.
+  A generation number older than MAX_GENERATION indicates a 'retired' user.
 - Client State
   Hash of Sync encryption key.
 - Created At
@@ -53,8 +54,15 @@ Get's all the records needed to return the same fields as 'Create User'. If
 multiple rows are used, the prior client states (those on a row with a
 replaced at) are collapsed into old client states as needed.
 
+Returns nothing if there is no user record.
 
+If the user record (the one with the most recent created at) has a
+'replaced at' value and has not been retired then 'Create User' is called to
+create a new record with a new node assignment, the generation and client state
+should be retained.
 
+Any prior user records missing a replaced_at will be updated to be set with the
+value of the current record's 'created at'.
 
 Services
 ========
@@ -90,4 +98,18 @@ Fields:
 ** Allociate node for a given service
 -------------------------------------
 
+Called by: 'Create User'
 
+Scans the nodes table to determine the 'best' node to assign a user to.
+To determine a node to use, all the nodes for a given service name that
+have available > 0, capacity > current load, and downed == 0 are
+queried and sorted based on the log (current load)/(capacity).
+
+Raise a BackendError if no node is found meeting the criteria.
+
+Update the node table before returning to decrement the available by 1
+and increase the current load by 1 for the returned node.
+
+Possible Improvement: Take the top N results and randomly choose one,
+this way under heavy load its less likely a single node will be chosen
+by large amounts of users before the counts have been updated.
