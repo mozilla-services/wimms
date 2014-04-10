@@ -64,6 +64,25 @@ should be retained.
 Any prior user records missing a replaced_at will be updated to be set with the
 value of the current record's 'created at'.
 
+*** Decommission a Node Assignment
+----------------------------------
+
+Optional arg: List of user ID's
+
+Locate all the users assigned to the node (or list of users) and give them a
+replaced at value to trigger new node assignment on next sync.
+
+*** Retiring a User
+-------------------
+
+Increase generation beyond MAX_GENERATION, mark all existing records as replaced
+at.
+
+*** Delete retired user data
+----------------------------
+
+Remove all the data for a user that has already been retired.
+
 Services
 ========
 
